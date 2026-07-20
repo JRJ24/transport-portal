@@ -6,26 +6,40 @@ import axios, {
 } from "axios";
 
 export const mainBase = window.location.hostname.includes("localhost")
-  ? import.meta.env.VITE_API_URL_DEV || "/api"
-  : import.meta.env.VITE_API_URL_PROD || "/api";
+  ? import.meta.env.VITE_API_URL_DEV || "/api/v1"
+  : import.meta.env.VITE_API_URL_PROD || "/api/v1";
 
 export const altBase = window.location.hostname.includes("localhost")
   ? import.meta.env.VITE_API_ALT_URL_DEV || "/api-alt"
-  : import.meta.env.VITE_API_ALT_URL_DEV || "/api-alt";
+  : import.meta.env.VITE_API_ALT_URL_PROD || "/api-alt";
 
-const tokenKey = "token";
+const accessTokenKey = "accessToken";
+const refreshTokenKey = "refreshToken";
 
 export const tokenManager = {
   get(): string | null {
-    return sessionStorage.getItem(tokenKey) || localStorage.getItem(tokenKey);
+    return sessionStorage.getItem(accessTokenKey) || localStorage.getItem(accessTokenKey);
+  },
+  getRefresh(): string | null {
+    return sessionStorage.getItem(refreshTokenKey) || localStorage.getItem(refreshTokenKey);
   },
   set(token: string, persist: "session" | "local" = "session") {
-    if (persist === "local") localStorage.setItem(tokenKey, token);
-    else sessionStorage.setItem(tokenKey, token);
+    if (persist === "local") localStorage.setItem(accessTokenKey, token);
+    else sessionStorage.setItem(accessTokenKey, token);
+  },
+  setRefresh(token: string, persist: "session" | "local" = "session") {
+    if (persist === "local") localStorage.setItem(refreshTokenKey, token);
+    else sessionStorage.setItem(refreshTokenKey, token);
+  },
+  setTokens(tokens: { accessToken: string; refreshToken: string }, persist: "session" | "local" = "session") {
+    this.set(tokens.accessToken, persist);
+    this.setRefresh(tokens.refreshToken, persist);
   },
   clear() {
-    sessionStorage.removeItem(tokenKey);
-    localStorage.removeItem(tokenKey);
+    sessionStorage.removeItem(accessTokenKey);
+    sessionStorage.removeItem(refreshTokenKey);
+    localStorage.removeItem(accessTokenKey);
+    localStorage.removeItem(refreshTokenKey);
     localStorage.removeItem("user");
   },
 };
@@ -55,8 +69,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (!useCookiesOnly) {
     const token = tokenManager.get();
     if (token) {
-      // Tipado seguro para headers
-      config.headers["x-access-token"] = token;
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
   return config;
@@ -68,8 +81,7 @@ altApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (!useCookiesOnly) {
     const token = tokenManager.get();
     if (token) {
-      // Tipado seguro para headers
-      config.headers["x-access-token"] = token;
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
   return config;
@@ -86,14 +98,19 @@ function processQueue(token?: string) {
 }
 
 async function doRefresh(): Promise<string> {
-  // Aquí usamos el DTO de lo que devuelve tu backend al refrescar
-  const { data } = await baseAxios.post<
-    ApiResponse<{ accessToken?: string; token?: string }>
-  >(`${mainBase}/auth/refresh-token`, {});
+  const refreshToken = tokenManager.getRefresh();
 
-  const newToken = data.data?.accessToken || data.data?.token;
+  if (!refreshToken) throw new Error("No refresh token available");
+
+  const { data } = await baseAxios.post<
+    ApiResponse<{ accessToken: string; refreshToken: string }>
+  >(`${mainBase}/auth/refresh`, { refreshToken });
+
+  const newToken = data.success ? data.data.accessToken : undefined;
+  const nextRefreshToken = data.success ? data.data.refreshToken : undefined;
 
   if (!newToken) throw new Error("No token in refresh response");
+  if (nextRefreshToken) tokenManager.setRefresh(nextRefreshToken);
   tokenManager.set(newToken);
   return newToken;
 }
@@ -123,8 +140,9 @@ api.interceptors.response.use(
     const requestUrl = original?.url ?? "";
     const hasStoredToken = Boolean(tokenManager.get());
     const isAuthRequest =
-      requestUrl.includes("/api/auth/login") ||
-      requestUrl.includes("/api/auth/register");
+      requestUrl.includes("/auth/login") ||
+      requestUrl.includes("/auth/register") ||
+      requestUrl.includes("/auth/refresh");
 
     if (
       status === 401 &&
@@ -141,7 +159,7 @@ api.interceptors.response.use(
           processQueue(newToken);
 
           if (original.headers) {
-            original.headers["x-access-token"] = newToken;
+            original.headers.Authorization = `Bearer ${newToken}`;
           }
 
           return api(original);
@@ -162,7 +180,7 @@ api.interceptors.response.use(
             return;
           }
           if (original.headers) {
-            original.headers["x-access-token"] = token;
+            original.headers.Authorization = `Bearer ${token}`;
           }
           resolve(api(original));
         });
@@ -198,8 +216,9 @@ altApi.interceptors.response.use(
     const requestUrl = original?.url ?? "";
     const hasStoredToken = Boolean(tokenManager.get());
     const isAuthRequest =
-      requestUrl.includes("/api/auth/login") ||
-      requestUrl.includes("/api/auth/register");
+      requestUrl.includes("/auth/login") ||
+      requestUrl.includes("/auth/register") ||
+      requestUrl.includes("/auth/refresh");
 
     if (
       status === 401 &&
@@ -216,7 +235,7 @@ altApi.interceptors.response.use(
           processQueue(newToken);
 
           if (original.headers) {
-            original.headers["x-access-token"] = newToken;
+            original.headers.Authorization = `Bearer ${newToken}`;
           }
 
           return api(original);
@@ -237,7 +256,7 @@ altApi.interceptors.response.use(
             return;
           }
           if (original.headers) {
-            original.headers["x-access-token"] = token;
+            original.headers.Authorization = `Bearer ${token}`;
           }
           resolve(api(original));
         });

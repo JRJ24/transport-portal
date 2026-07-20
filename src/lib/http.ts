@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { api, altApi, mainBase, altBase } from "@/lib/axios";
+import { api, altApi } from "@/lib/axios";
 import type { ApiResponse } from "@/types/api.types";
 import { type AxiosRequestConfig, AxiosError } from "axios";
 
@@ -13,19 +12,6 @@ export interface RequestOpts {
   data?: unknown;
   timeoutMs?: number;
   params?: Record<string, unknown>;
-}
-
-function resolveBase(opt?: BaseOpt): string {
-  if (!opt || opt === "main") return mainBase;
-  if (opt === "alt") return altBase;
-  return opt;
-}
-
-function buildURL(endpoint: string, base: string): string {
-  if (/^https?:\/\//i.test(endpoint)) return endpoint;
-  const left = base.endsWith("/") ? base.slice(0, -1) : base;
-  const right = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
-  return `${left}/${right}`;
 }
 
 async function request<T>(
@@ -69,10 +55,11 @@ async function request<T>(
     }
 
     return {
-      ok: false,
-      mensaje: "Error de conexión",
-      message: axiosError.message,
-      data: null as T,
+      success: false,
+      error: {
+        code: "NETWORK_ERROR",
+        message: axiosError.message || "Error de conexión",
+      },
     };
   }
 }

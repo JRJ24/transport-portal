@@ -1,13 +1,24 @@
-export type ApiResponse<T = unknown> = {
-  ok: boolean;
-  mensaje?: string;
-  message?: string;
+export type ApiSuccessResponse<T = unknown> = {
+  success: true;
   data: T;
-  token?: string;
-  pagination?: {
-    currentPage?: number;
-    totalPages?: number;
-    totalItems?: number;
-    itemsPerPage?: number;
+  meta?: {
+    requestId?: string;
+    timestamp?: string;
   };
-}
+};
+
+export type ApiErrorResponse = {
+  success: false;
+  error: {
+    code?: string;
+    message: string;
+    details?: unknown;
+  };
+  meta?: {
+    requestId?: string;
+    timestamp?: string;
+    path?: string;
+  };
+};
+
+export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
