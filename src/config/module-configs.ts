@@ -1,13 +1,5 @@
 import type { ModuleConfig } from "@/types/domain";
 
-export const orderRows = [
-  { id: "ORD-000124", cliente: "Santo Domingo Este", origen: "SDE", destino: "Distrito Nacional", servicio: "Inmediato", vehiculo: "Camión pequeño", conductor: "Juan Pérez", estado: "En ruta", eta: "24 min", precio: 1850, fecha: "20 Jul, 09:20", prioridad: "Alta" },
-  { id: "ORD-000127", cliente: "Naco Market", origen: "Naco", destino: "Las Américas", servicio: "Programado", vehiculo: "Van de carga", conductor: "Sin asignar", estado: "Pendiente", eta: "--", precio: 2400, fecha: "20 Jul, 10:15", prioridad: "Media" },
-  { id: "ORD-000131", cliente: "Villa Mella Supply", origen: "Villa Mella", destino: "Piantini", servicio: "Inmediato", vehiculo: "Motor carga", conductor: "Ana Rojas", estado: "En recogida", eta: "16 min", precio: 950, fecha: "20 Jul, 10:42", prioridad: "Normal" },
-  { id: "ORD-000132", cliente: "Grupo Herrera", origen: "Herrera", destino: "Boca Chica", servicio: "Inmediato", vehiculo: "Camión mediano", conductor: "Carlos Díaz", estado: "Incidencia", eta: "42 min", precio: 3600, fecha: "20 Jul, 11:05", prioridad: "Crítica" },
-  { id: "ORD-000135", cliente: "Farmacia Carol", origen: "Los Prados", destino: "Gazcue", servicio: "Programado", vehiculo: "Van de carga", conductor: "Marta Cruz", estado: "Entregada", eta: "0 min", precio: 1250, fecha: "20 Jul, 08:30", prioridad: "Normal" },
-];
-
 const commonOrderFields = [
   { name: "customerId", label: "ID del cliente", placeholder: "UUID del customer profile" },
   { name: "vehicleCategoryId", label: "ID categoría vehículo", placeholder: "UUID de categoría" },
@@ -55,8 +47,11 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { key: "estado", label: "Estado", type: "status" }, { key: "eta", label: "ETA" }, { key: "precio", label: "Precio", type: "money" },
       { key: "prioridad", label: "Prioridad", type: "status" },
     ],
-    rows: orderRows, fields: commonOrderFields,
-    filters: ["Estado", "Fecha", "Prioridad", "Cliente", "Vehículo", "Conductor"],
+    rows: [], fields: commonOrderFields,
+    filters: [
+      { label: "Estado", name: "status", options: ["DRAFT", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"].map((value) => ({ label: value, value })) },
+      { label: "Servicio", name: "serviceType", options: ["INMEDIATE", "SCHEDULED"].map((value) => ({ label: value, value })) },
+    ],
   },
   drivers: {
     key: "drivers", title: "Conductores", subtitle: "Disponibilidad, seguridad y desempeño", action: "Nuevo conductor",
@@ -66,19 +61,17 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     columns: [
       { key: "id", label: "ID", type: "strong" }, { key: "nombre", label: "Conductor", type: "strong" }, { key: "licencia", label: "Licencia" },
-      { key: "zona", label: "Zona" }, { key: "turno", label: "Turno" }, { key: "score", label: "Score" }, { key: "estado", label: "Estado", type: "status" },
+      { key: "vencimiento", label: "Vencimiento" }, { key: "verificacion", label: "Verificación", type: "status" }, { key: "score", label: "Score" }, { key: "estado", label: "Estado", type: "status" },
     ],
-    rows: [
-      { id: "DRV-047", nombre: "Rafael Peña", licencia: "D-4 · 2028", zona: "SDQ Norte", turno: "06:00–14:00", score: 97, estado: "Disponible" },
-      { id: "DRV-052", nombre: "Ana Jiménez", licencia: "D-3 · 2027", zona: "Punta Cana", turno: "08:00–16:00", score: 91, estado: "En ruta" },
-      { id: "DRV-061", nombre: "Luis Marte", licencia: "D-4 · 2029", zona: "Santiago", turno: "14:00–22:00", score: 78, estado: "Pausa" },
-      { id: "DRV-073", nombre: "Carlos Díaz", licencia: "D-2 · 2027", zona: "La Vega", turno: "06:00–14:00", score: 84, estado: "Disponible" },
-      { id: "DRV-084", nombre: "Marta Cruz", licencia: "D-3 · 2028", zona: "Bávaro", turno: "08:00–16:00", score: 88, estado: "Disponible" },
+    rows: [],
+    filters: [
+      { label: "Estado", name: "availabilityStatus", options: ["AVAILABLE", "BUSY", "OFFLINE", "SUSPENDED", "VACATION"].map((value) => ({ label: value, value })) },
+      { label: "Verificación", name: "verificationStatus", options: ["PENDING", "APPROVED", "REJECTED"].map((value) => ({ label: value, value })) },
     ],
-    filters: ["Estado", "Zona", "Licencia", "Score"],
     fields: [
-      { name: "nombre", label: "Nombre completo" }, { name: "email", label: "Correo", type: "email" }, { name: "telefono", label: "Teléfono" },
-      { name: "licencia", label: "Número de licencia" }, { name: "vencimiento", label: "Vencimiento", type: "date" }, { name: "zona", label: "Zona" },
+      { name: "userId", label: "ID de usuario" }, { name: "licenseNumber", label: "Número de licencia" }, { name: "licenseExpiration", label: "Vencimiento", type: "date" },
+      { name: "availabilityStatus", label: "Estado", type: "select", options: ["AVAILABLE", "BUSY", "OFFLINE", "SUSPENDED", "VACATION"], required: false },
+      { name: "verificationStatus", label: "Verificación", type: "select", options: ["PENDING", "APPROVED", "REJECTED"], required: false },
     ],
   },
   vehicles: {
@@ -89,19 +82,16 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     columns: [
       { key: "id", label: "Unidad", type: "strong" }, { key: "placa", label: "Placa", type: "strong" }, { key: "tipo", label: "Categoría" },
-      { key: "marca", label: "Marca / modelo" }, { key: "km", label: "Kilometraje" }, { key: "proximo", label: "Próximo servicio" }, { key: "estado", label: "Estado", type: "status" },
+      { key: "marca", label: "Marca / modelo" }, { key: "anio", label: "Año" }, { key: "documentos", label: "Docs." }, { key: "estado", label: "Estado", type: "status" },
     ],
-    rows: [
-      { id: "VH-104", placa: "L432118", tipo: "Furgón 53'", marca: "Freightliner M2", km: "182k", proximo: "1,200 km", estado: "Activa" },
-      { id: "VH-118", placa: "L441072", tipo: "Reefer", marca: "International MV", km: "98k", proximo: "420 km", estado: "Atrasada" },
-      { id: "VH-121", placa: "L438904", tipo: "Chasis", marca: "Hino 500", km: "210k", proximo: "3,400 km", estado: "Activa" },
-      { id: "VH-127", placa: "L452201", tipo: "Furgón 26'", marca: "Isuzu NPR", km: "144k", proximo: "Taller", estado: "Mantenimiento" },
+    rows: [],
+    filters: [
+      { label: "Estado", name: "status", options: ["ACTIVE", "MAINTENANCE", "INACTIVE", "SUSPENDED"].map((value) => ({ label: value, value })) },
     ],
-    filters: ["Estado", "Categoría", "Marca", "Documentos"],
     fields: [
-      { name: "placa", label: "Placa" }, { name: "tipo", label: "Categoría", type: "select", options: ["Motor carga", "Van de carga", "Furgón 26'", "Furgón 53'", "Reefer"] },
-      { name: "marca", label: "Marca" }, { name: "modelo", label: "Modelo" }, { name: "anio", label: "Año", type: "number" },
-      { name: "capacidad", label: "Capacidad máxima" }, { name: "seguro", label: "Vencimiento del seguro", type: "date" },
+      { name: "driverId", label: "ID del conductor" }, { name: "categoryId", label: "ID de categoría" }, { name: "plateNumber", label: "Placa" },
+      { name: "brand", label: "Marca" }, { name: "model", label: "Modelo" }, { name: "year", label: "Año", type: "number" },
+      { name: "color", label: "Color" }, { name: "status", label: "Estado", type: "select", options: ["ACTIVE", "MAINTENANCE", "INACTIVE", "SUSPENDED"], required: false },
     ],
   },
   customers: {
@@ -112,16 +102,13 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     columns: [
       { key: "id", label: "Cuenta", type: "strong" }, { key: "cliente", label: "Cliente", type: "strong" }, { key: "tipo", label: "Tipo" },
-      { key: "volumen", label: "Volumen" }, { key: "sla", label: "SLA" }, { key: "cobro", label: "Cobro" }, { key: "estado", label: "Estado", type: "status" },
+      { key: "documento", label: "Documento" }, { key: "volumen", label: "Volumen" }, { key: "cobro", label: "Cobro" }, { key: "estado", label: "Estado", type: "status" },
     ],
-    rows: [
-      { id: "CLI-1004", cliente: "Supermercados Nacional", tipo: "Empresa", volumen: "1.2k", sla: "96%", cobro: "OK", estado: "VIP" },
-      { id: "CLI-1021", cliente: "Farmacia Carol", tipo: "Empresa", volumen: "940", sla: "92%", cobro: "OK", estado: "Confirmada" },
-      { id: "CLI-1068", cliente: "Grupo Ramos", tipo: "Empresa", volumen: "1.8k", sla: "88%", cobro: "Revisión", estado: "Riesgo" },
-      { id: "CLI-1083", cliente: "La Sirena", tipo: "Empresa", volumen: "1.5k", sla: "94%", cobro: "OK", estado: "VIP" },
-      { id: "CLI-1102", cliente: "Plaza Lama", tipo: "Empresa", volumen: "620", sla: "91%", cobro: "OK", estado: "Confirmada" },
+    rows: [],
+    filters: [
+      { label: "Tipo", name: "customerType", options: ["INDIVIDUAL", "BUSINESS"].map((value) => ({ label: value, value })) },
+      { label: "Estado", name: "status", options: ["ACTIVE", "INACTIVE", "BLOCKED"].map((value) => ({ label: value, value })) },
     ],
-    filters: ["Tipo", "Ciudad", "Cobro", "Estado"],
     fields: [
       { name: "cliente", label: "Nombre o razón social" }, { name: "tipo", label: "Tipo", type: "select", options: ["Individual", "Empresa"] },
       { name: "documento", label: "Cédula / RNC" }, { name: "email", label: "Correo de facturación", type: "email" }, { name: "telefono", label: "Teléfono" },

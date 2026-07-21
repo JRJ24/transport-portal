@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppProviders } from "@/app/providers";
-import { moduleConfigs } from "@/data/mock-data";
+import { moduleConfigs } from "@/config/module-configs";
 import { AuditPage, ReportsPage, SettingsPage } from "@/features/admin/AdminPages";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";

@@ -3,7 +3,11 @@ import { unwrapApiResponse } from '@/lib/api-response';
 import type { ApiResponse } from '@/types/api.types';
 import type { DataRow, ModuleKey } from '@/types/domain';
 
-type AnyRecord = Record<string, unknown>;
+export type AnyRecord = Record<string, unknown>;
+export type QueryParams = Record<
+  string,
+  string | number | boolean | Date | null | undefined
+>;
 
 export interface DashboardSummary {
   users: number;
@@ -36,42 +40,102 @@ export function isApiModule(key: ModuleKey) {
 
 export const tmsService = {
   async dashboard() {
-    const response = await api.get<ApiResponse<DashboardSummary>>('/dashboard/summary');
-    return unwrapApiResponse(response.data);
+    return getData<DashboardSummary>('/dashboard/summary');
   },
 
-  async listModuleRows(key: ModuleKey): Promise<DataRow[]> {
+  async listModuleRows(key: ModuleKey, query?: QueryParams): Promise<DataRow[]> {
     switch (key) {
       case 'orders':
-        return (await this.orders()).map(mapOrderRow);
+        return (await this.orders(query)).map(mapOrderRow);
       case 'drivers':
-        return (await this.drivers()).map(mapDriverRow);
+        return (await this.drivers(query)).map(mapDriverRow);
       case 'vehicles':
-        return (await this.vehicles()).map(mapVehicleRow);
+        return (await this.vehicles(query)).map(mapVehicleRow);
       case 'customers':
-        return (await this.customers()).map(mapCustomerRow);
+        return (await this.customers(query)).map(mapCustomerRow);
       default:
         return [];
     }
   },
 
-  async orders() {
-    const response = await api.get<ApiResponse<AnyRecord[]>>('/orders');
-    return unwrapApiResponse(response.data);
+  orders(query?: QueryParams) {
+    return getList('/orders', query);
   },
 
-  async drivers() {
-    const response = await api.get<ApiResponse<AnyRecord[]>>('/drivers');
-    return unwrapApiResponse(response.data);
+  drivers(query?: QueryParams) {
+    return getList('/drivers', query);
   },
 
-  async vehicles() {
-    const response = await api.get<ApiResponse<AnyRecord[]>>('/vehicles');
-    return unwrapApiResponse(response.data);
+  vehicles(query?: QueryParams) {
+    return getList('/vehicles', query);
   },
 
-  async customers() {
-    const response = await api.get<ApiResponse<AnyRecord[]>>('/customers');
+  customers(query?: QueryParams) {
+    return getList('/customers', query);
+  },
+
+  reservations(query?: QueryParams) {
+    return getList('/reservations', query);
+  },
+
+  rateCards(query?: QueryParams) {
+    return getList('/pricing/rate-cards', query);
+  },
+
+  incidents(query?: QueryParams) {
+    return getList('/incidents', query);
+  },
+
+  deliveryProofs(query?: QueryParams) {
+    return getList('/delivery-proofs', query);
+  },
+
+  audit(query?: QueryParams) {
+    return getList('/audit', query);
+  },
+
+  parameters(query?: QueryParams) {
+    return getList('/parameters', query);
+  },
+
+  catalogs(query?: QueryParams) {
+    return getList('/catalogs', query);
+  },
+
+  users(query?: QueryParams) {
+    return getList('/users', query);
+  },
+
+  roles() {
+    return getList('/roles');
+  },
+
+  createUser(values: Record<string, string>) {
+    return postData('/users', {
+      fullName: values.fullName,
+      email: values.email,
+      phone: values.phone,
+      password: values.password,
+      roles: values.roles.split(',').map((role) => role.trim()).filter(Boolean),
+    });
+  },
+
+  updateUserStatus(id: string, status: string) {
+    return patchData(`/users/${id}/status`, { status });
+  },
+
+  reportsOperations(query?: QueryParams) {
+    return getData<AnyRecord>('/reports/operations', query);
+  },
+
+  reportsBilling(query?: QueryParams) {
+    return getData<AnyRecord>('/reports/billing', query);
+  },
+
+  async latestLocation(orderId: string) {
+    const response = await api.get<ApiResponse<AnyRecord | null>>(
+      `/locations/orders/${orderId}/latest`,
+    );
     return unwrapApiResponse(response.data);
   },
 
@@ -124,8 +188,158 @@ export const tmsService = {
       ],
     };
 
-    const response = await api.post<ApiResponse<AnyRecord>>('/orders/tms', payload);
-    return unwrapApiResponse(response.data);
+    return postData('/orders/tms', payload);
+  },
+
+  createDriver(values: Record<string, string>) {
+    return postData('/drivers', {
+      userId: values.userId,
+      licenseNumber: values.licenseNumber,
+      licenseExpiration: toIso(values.licenseExpiration),
+      availabilityStatus: optionalString(values.availabilityStatus),
+      verificationStatus: optionalString(values.verificationStatus),
+    });
+  },
+
+  updateDriver(values: Record<string, string>, id: string) {
+    const status = optionalString(values.availabilityStatus ?? values.estado);
+    const verification = optionalString(values.verificationStatus);
+    const requests: Promise<unknown>[] = [];
+
+    if (status) {
+      requests.push(patchData(`/drivers/${id}/status`, { availabilityStatus: status }));
+    }
+    if (verification) {
+      requests.push(
+        patchData(`/drivers/${id}/verification`, { verificationStatus: verification }),
+      );
+    }
+
+    return Promise.all(requests);
+  },
+
+  createVehicle(values: Record<string, string>) {
+    return postData('/vehicles', {
+      driverId: values.driverId,
+      categoryId: values.categoryId,
+      plateNumber: values.plateNumber,
+      brand: values.brand,
+      model: values.model,
+      year: toNumber(values.year),
+      color: values.color,
+      status: optionalString(values.status),
+    });
+  },
+
+  updateVehicle(values: Record<string, string>, id: string) {
+    return patchData(`/vehicles/${id}`, {
+      driverId: optionalString(values.driverId),
+      categoryId: optionalString(values.categoryId),
+      plateNumber: optionalString(values.plateNumber ?? values.placa),
+      brand: optionalString(values.brand),
+      model: optionalString(values.model),
+      year: optionalNumber(values.year),
+      color: optionalString(values.color),
+      status: optionalString(values.status ?? values.estado),
+    });
+  },
+
+  createReservation(values: Record<string, string>) {
+    return postData('/reservations', {
+      orderId: values.orderId,
+      reservedFor: toIso(values.reservedFor),
+    });
+  },
+
+  rescheduleReservation(id: string, reservedFor: string) {
+    return patchData(`/reservations/${id}/reschedule`, { reservedFor: toIso(reservedFor) });
+  },
+
+  cancelReservation(id: string) {
+    return patchData(`/reservations/${id}/cancel`, {});
+  },
+
+  completeReservation(id: string) {
+    return patchData(`/reservations/${id}/complete`, {});
+  },
+
+  createRateCard(values: Record<string, string>) {
+    return postData('/pricing/rate-cards', {
+      name: values.name,
+      description: values.description,
+      validFrom: toIso(values.validFrom),
+      validTo: values.validTo ? toIso(values.validTo) : undefined,
+      isActive: values.isActive ? values.isActive === 'true' : undefined,
+    });
+  },
+
+  createRateRule(rateCardId: string, values: Record<string, string>) {
+    return postData(`/pricing/rate-cards/${rateCardId}/rules`, {
+      vehicleCategoryId: values.vehicleCategoryId,
+      baseFare: toNumber(values.baseFare),
+      pricePerKm: toNumber(values.pricePerKm),
+      pricePerMinute: toNumber(values.pricePerMinute),
+      minimumFare: toNumber(values.minimumFare),
+      helperFee: toNumber(values.helperFee),
+      nightFee: toNumber(values.nightFee),
+      waitingPricePerMinute: toNumber(values.waitingPricePerMinute),
+      cancellationFee: toNumber(values.cancellationFee),
+    });
+  },
+
+  createIncident(values: Record<string, string>) {
+    return postData('/incidents', {
+      orderId: values.orderId,
+      incidentType: values.incidentType,
+      severity: values.severity,
+      title: values.title,
+      description: values.description,
+      latitude: toNumber(values.latitude),
+      longitude: toNumber(values.longitude),
+    });
+  },
+
+  updateIncidentStatus(id: string, status: string) {
+    return patchData(`/incidents/${id}/status`, { status });
+  },
+
+  addIncidentComment(id: string, comment: string) {
+    return postData(`/incidents/${id}/comments`, { comment });
+  },
+
+  createDeliveryProof(values: Record<string, string>) {
+    return postData('/delivery-proofs', {
+      orderId: values.orderId,
+      proofType: values.proofType,
+      recipientName: values.recipientName,
+      recipientDocument: values.recipientDocument,
+      notes: optionalString(values.notes),
+      latitude: toNumber(values.latitude),
+      longitude: toNumber(values.longitude),
+    });
+  },
+
+  validateDeliveryProof(id: string, validationStatus: string) {
+    return patchData(`/delivery-proofs/${id}/validate`, { validationStatus });
+  },
+
+  upsertParameter(values: Record<string, string>) {
+    return putData('/parameters', {
+      key: values.key,
+      value: values.value,
+      valueType: values.valueType,
+      description: values.description,
+    });
+  },
+
+  createCatalog(values: Record<string, string>) {
+    return postData('/catalogs', {
+      groupKey: values.groupKey,
+      code: values.code,
+      label: values.label,
+      sortOrder: optionalNumber(values.sortOrder),
+      isActive: values.isActive ? values.isActive === 'true' : undefined,
+    });
   },
 };
 
@@ -154,7 +368,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     estado: getString(order, 'status') ?? '--',
     eta: `${getNumber(order, 'estimatedDurationMin') ?? '--'} min`,
     precio: getNumber(order, 'totalAmount') ?? 0,
-    fecha: formatDate(getString(order, 'createdAt')),
+    fecha: formatDateTime(getString(order, 'createdAt')),
     prioridad: getString(order, 'status') === 'REQUESTED' ? 'Alta' : 'Normal',
   };
 }
@@ -164,10 +378,15 @@ export function mapDriverRow(driver: AnyRecord): DataRow {
 
   return {
     id: getString(driver, 'id') ?? '--',
+    userId: getString(driver, 'userId') ?? '',
+    licenseNumber: getString(driver, 'licenseNumber') ?? '',
+    licenseExpiration: getString(driver, 'licenseExpiration') ?? '',
+    availabilityStatus: getString(driver, 'availabilityStatus') ?? '',
+    verificationStatus: getString(driver, 'verificationStatus') ?? '',
     nombre: getString(user, 'fullName') ?? getString(driver, 'userId') ?? '--',
     licencia: getString(driver, 'licenseNumber') ?? '--',
-    zona: getString(driver, 'zone') ?? 'Sin zona',
-    turno: getString(driver, 'shift') ?? 'Disponible',
+    vencimiento: formatDate(getString(driver, 'licenseExpiration')),
+    verificacion: getString(driver, 'verificationStatus') ?? '--',
     score: getNumber(driver, 'ratingAVG') ?? 0,
     estado: getString(driver, 'availabilityStatus') ?? '--',
   };
@@ -178,27 +397,213 @@ export function mapVehicleRow(vehicle: AnyRecord): DataRow {
 
   return {
     id: getString(vehicle, 'id') ?? '--',
+    driverId: getString(vehicle, 'driverId') ?? '',
+    categoryId: getString(vehicle, 'categoryId') ?? '',
+    plateNumber: getString(vehicle, 'plateNumber') ?? '',
+    brand: getString(vehicle, 'brand') ?? '',
+    model: getString(vehicle, 'model') ?? '',
+    year: getNumber(vehicle, 'year') ?? 0,
+    color: getString(vehicle, 'color') ?? '',
+    status: getString(vehicle, 'status') ?? '',
     placa: getString(vehicle, 'plateNumber') ?? '--',
     tipo: getString(vehicleCategory, 'name') ?? getString(vehicle, 'categoryId') ?? '--',
     marca: `${getString(vehicle, 'brand') ?? ''} ${getString(vehicle, 'model') ?? ''}`.trim(),
-    km: getString(vehicle, 'kilometers') ?? '--',
-    proximo: getString(vehicle, 'nextService') ?? '--',
+    anio: getNumber(vehicle, 'year') ?? '--',
+    conductor: getString(vehicle, 'driverId') ?? '--',
+    documentos: String(asRecordArray(vehicle.vehiclesDocuments).length),
     estado: getString(vehicle, 'status') ?? '--',
   };
 }
 
 export function mapCustomerRow(customer: AnyRecord): DataRow {
   const user = asRecord(customer.user);
+  const orders = asRecordArray(customer.transportOrders);
 
   return {
     id: getString(customer, 'id') ?? '--',
     cliente: getString(customer, 'companyName') ?? getString(user, 'fullName') ?? getString(customer, 'documentNumber') ?? '--',
     tipo: getString(customer, 'customerType') ?? '--',
-    volumen: String(asRecordArray(customer.transportOrders).length || '--'),
-    sla: '--',
+    documento: getString(customer, 'documentNumber') ?? '--',
+    volumen: String(orders.length || '--'),
     cobro: getString(customer, 'billingEmail') ? 'OK' : 'Pendiente',
     estado: getString(user, 'status') ?? 'ACTIVE',
   };
+}
+
+export function mapReservationRow(reservation: AnyRecord): DataRow {
+  const order = asRecord(reservation.order);
+  const customer = asRecord(order?.customer);
+  const customerUser = asRecord(customer?.user);
+  const category = asRecord(order?.vehicleCategory);
+
+  return {
+    id: getString(reservation, 'id') ?? '--',
+    orderId: getString(reservation, 'orderId') ?? '--',
+    orden: getString(order, 'orderCode') ?? getString(reservation, 'orderId') ?? '--',
+    cliente: getString(customer, 'companyName') ?? getString(customerUser, 'fullName') ?? '--',
+    reservado: formatDateTime(getString(reservation, 'reservedFor')),
+    reservedFor: getString(reservation, 'reservedFor') ?? '',
+    vehiculo: getString(category, 'name') ?? '--',
+    reprogramaciones: getNumber(reservation, 'rescheduleCount') ?? 0,
+    estado: getString(reservation, 'reservationStatus') ?? '--',
+  };
+}
+
+export function mapIncidentRow(incident: AnyRecord): DataRow {
+  const order = asRecord(incident.order);
+
+  return {
+    id: getString(incident, 'id') ?? '--',
+    orderId: getString(incident, 'orderId') ?? '--',
+    orden: getString(order, 'orderCode') ?? getString(incident, 'orderId') ?? '--',
+    titulo: getString(incident, 'title') ?? '--',
+    tipo: getString(incident, 'incidentType') ?? '--',
+    severidad: getString(incident, 'severity') ?? '--',
+    estado: getString(incident, 'status') ?? '--',
+    fecha: formatDateTime(getString(incident, 'reportedAt')),
+  };
+}
+
+export function mapRateCardRow(card: AnyRecord): DataRow {
+  const rules = asRecordArray(card.rateRules);
+
+  return {
+    id: getString(card, 'id') ?? '--',
+    nombre: getString(card, 'name') ?? '--',
+    descripcion: getString(card, 'description') ?? '--',
+    vigencia: `${formatDate(getString(card, 'validForm'))} - ${formatDate(getString(card, 'validTo'))}`,
+    reglas: String(rules.length),
+    estado: getBoolean(card, 'isActive') ? 'ACTIVE' : 'INACTIVE',
+  };
+}
+
+export function mapRateRuleRow(rule: AnyRecord): DataRow {
+  return {
+    id: getString(rule, 'id') ?? '--',
+    vehiculo: getString(rule, 'vehicleCategoryId') ?? '--',
+    base: getNumber(rule, 'baseFare') ?? 0,
+    km: getNumber(rule, 'pricePerKM') ?? 0,
+    minuto: getNumber(rule, 'pricePerMinute') ?? 0,
+    minima: getNumber(rule, 'minimumFare') ?? 0,
+    ayudante: getNumber(rule, 'helperFee') ?? 0,
+    espera: getNumber(rule, 'waitingPricePerMinute') ?? 0,
+  };
+}
+
+export function mapDeliveryProofRow(proof: AnyRecord): DataRow {
+  const order = asRecord(proof.order);
+
+  return {
+    id: getString(proof, 'id') ?? '--',
+    orden: getString(order, 'orderCode') ?? getString(proof, 'orderId') ?? '--',
+    receptor: getString(proof, 'recipientName') ?? '--',
+    documento: getString(proof, 'recipientDocument') ?? '--',
+    tipo: getString(proof, 'proofType') ?? '--',
+    firmas: String(asRecordArray(proof.signatures).length),
+    estado: getString(proof, 'validationStatus') ?? '--',
+    fecha: formatDateTime(getString(proof, 'capturedAt')),
+  };
+}
+
+export function mapAuditRow(log: AnyRecord): DataRow {
+  const user = asRecord(log.user);
+
+  return {
+    id: getString(log, 'id') ?? '--',
+    hora: formatDateTime(getString(log, 'createdAt')),
+    actor: getString(user, 'fullName') ?? getString(log, 'actorUserId') ?? 'Sistema',
+    accion: getString(log, 'action') ?? '--',
+    entidad: getString(log, 'entityType') ?? '--',
+    entityId: getString(log, 'entityId') ?? '--',
+    ip: getString(log, 'ipAddress') ?? '--',
+  };
+}
+
+export function mapLiveLocation(location: AnyRecord): LiveLocation {
+  return {
+    id: getString(location, 'id') ?? `${getString(location, 'orderId') ?? 'order'}-${getString(location, 'recordedAt') ?? Date.now()}`,
+    driverId: getString(location, 'driverId') ?? '',
+    orderId: getString(location, 'orderId') ?? '',
+    latitude: getNumber(location, 'latitude') ?? 0,
+    longitude: getNumber(location, 'longitude') ?? 0,
+    accuracy: getNumber(location, 'accuracy') ?? null,
+    speed: getNumber(location, 'speed') ?? null,
+    batteryLevel: getNumber(location, 'batteryLevel') ?? null,
+    recordedAt: getString(location, 'recordedAt') ?? new Date().toISOString(),
+    receivedAt: getString(location, 'receivedAt') ?? new Date().toISOString(),
+  };
+}
+
+export function mapParameterRow(parameter: AnyRecord): DataRow {
+  return {
+    id: getString(parameter, 'id') ?? getString(parameter, 'key') ?? '--',
+    clave: getString(parameter, 'key') ?? '--',
+    valor: getString(parameter, 'value') ?? '--',
+    tipo: getString(parameter, 'valueType') ?? '--',
+    descripcion: getString(parameter, 'description') ?? '--',
+    actualizado: formatDateTime(getString(parameter, 'updatedAt')),
+  };
+}
+
+export function mapCatalogRow(catalog: AnyRecord): DataRow {
+  return {
+    id: getString(catalog, 'id') ?? '--',
+    grupo: getString(catalog, 'groupKey') ?? '--',
+    codigo: getString(catalog, 'code') ?? '--',
+    etiqueta: getString(catalog, 'label') ?? '--',
+    orden: getNumber(catalog, 'sortOrder') ?? 0,
+    estado: getBoolean(catalog, 'isActive') ? 'ACTIVE' : 'INACTIVE',
+  };
+}
+
+export function mapUserRow(user: AnyRecord): DataRow {
+  const roles = Array.isArray(user.roles) ? user.roles.map(String).join(', ') : '--';
+
+  return {
+    id: getString(user, 'id') ?? '--',
+    usuario: getString(user, 'fullName') ?? '--',
+    email: getString(user, 'email') ?? '--',
+    telefono: getString(user, 'phone') ?? '--',
+    roles,
+    estado: getString(user, 'status') ?? '--',
+  };
+}
+
+async function getData<T>(endpoint: string, query?: QueryParams): Promise<T> {
+  const response = await api.get<ApiResponse<T>>(endpoint, { params: cleanParams(query) });
+  return unwrapApiResponse(response.data);
+}
+
+async function getList(endpoint: string, query?: QueryParams): Promise<AnyRecord[]> {
+  const data = await getData<AnyRecord[] | { items: AnyRecord[] }>(endpoint, query);
+  return Array.isArray(data) ? data : data.items;
+}
+
+async function postData(endpoint: string, payload: unknown) {
+  const response = await api.post<ApiResponse<AnyRecord>>(endpoint, payload);
+  return unwrapApiResponse(response.data);
+}
+
+async function putData(endpoint: string, payload: unknown) {
+  const response = await api.put<ApiResponse<AnyRecord>>(endpoint, payload);
+  return unwrapApiResponse(response.data);
+}
+
+async function patchData(endpoint: string, payload: unknown) {
+  const response = await api.patch<ApiResponse<AnyRecord>>(endpoint, payload);
+  return unwrapApiResponse(response.data);
+}
+
+function cleanParams(query?: QueryParams) {
+  if (!query) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(query)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value]),
+  );
 }
 
 function toNumber(value: string) {
@@ -211,7 +616,36 @@ function toNumber(value: string) {
   return parsed;
 }
 
+function optionalNumber(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  return toNumber(value);
+}
+
+function optionalString(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function toIso(value: string) {
+  return new Date(value).toISOString();
+}
+
 function formatDate(value: string | undefined) {
+  if (!value) {
+    return '--';
+  }
+
+  return new Intl.DateTimeFormat('es-DO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string | undefined) {
   if (!value) {
     return '--';
   }
@@ -243,4 +677,8 @@ function getNumber(source: AnyRecord | undefined, key: string): number | undefin
   const value = source?.[key];
   const parsed = typeof value === 'number' || typeof value === 'string' ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getBoolean(source: AnyRecord | undefined, key: string): boolean {
+  return source?.[key] === true;
 }

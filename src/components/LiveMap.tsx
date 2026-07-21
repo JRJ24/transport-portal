@@ -1,13 +1,6 @@
-import { Navigation, TriangleAlert, Truck } from "lucide-react";
+import { Truck } from "lucide-react";
 import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
 import type { LiveLocation } from "@/services/tms.service";
-
-const markers = [
-  { id: "ORD-124", type: "blue", x: 24, y: 28, icon: Navigation },
-  { id: "RD-07", type: "green", x: 62, y: 53, icon: Truck },
-  { id: "INC", type: "orange", x: 78, y: 24, icon: TriangleAlert },
-  { id: "RD-11", type: "dark", x: 43, y: 70, icon: Truck },
-];
 
 export function LiveMap({ compact = false, locations = [] }: { compact?: boolean; locations?: LiveLocation[] }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -35,14 +28,13 @@ export function LiveMap({ compact = false, locations = [] }: { compact?: boolean
     y: 24 + ((index * 13) % 56),
     icon: Truck,
   }));
-  const visibleMarkers = liveMarkers.length ? liveMarkers : markers;
-
   return (
     <div className={`live-map ${compact ? "live-map--compact" : ""}`}>
       <div className="map-grid" />
       <div className="road road--one" /><div className="road road--two" /><div className="road road--three" /><div className="road road--four" />
       <div className="map-water" />
-      {visibleMarkers.map((marker) => <div key={marker.id} className={`map-marker map-marker--${marker.type}`} style={{ left: `${marker.x}%`, top: `${marker.y}%` }}><marker.icon size={13} /><span>{marker.id}</span></div>)}
+      {liveMarkers.map((marker) => <div key={marker.id} className={`map-marker map-marker--${marker.type}`} style={{ left: `${marker.x}%`, top: `${marker.y}%` }}><marker.icon size={13} /><span>{marker.id}</span></div>)}
+      {!liveMarkers.length && <div className="map-empty"><Truck size={18} /><span>Sin GPS real recibido</span></div>}
       {!compact && <div className="map-legend"><span><i className="blue" /> En ruta</span><span><i className="green" /> Disponible</span><span><i className="orange" /> Alerta</span></div>}
     </div>
   );

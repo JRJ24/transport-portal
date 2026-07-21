@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Download, MoreHorizontal, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, Download, MoreHorizontal, Search, X } from "lucide-react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import type { Column, DataRow, FormField, Stat, Tone } from "@/types/domain";
+import type { Column, DataRow, FilterConfig, FormField, Stat, Tone } from "@/types/domain";
 
 export function Button({ children, variant = "primary", className = "", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
   return <button className={`button button--${variant} ${className}`} {...props}>{children}</button>;
@@ -42,13 +42,12 @@ export function PageHeader({ title, subtitle, action, onAction, onExport }: { ti
   );
 }
 
-export function SearchFilters({ search, onSearch, filters }: { search: string; onSearch: (value: string) => void; filters: string[] }) {
+export function SearchFilters({ search, onSearch, filters, values = {}, onFilterChange }: { search: string; onSearch: (value: string) => void; filters: Array<string | FilterConfig>; values?: Record<string, string>; onFilterChange?: (name: string, value: string) => void }) {
   return (
     <div className="toolbar">
       <label className="search-field"><Search size={16} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Buscar en esta vista..." /></label>
       <div className="filter-row">
-        {filters.map((filter) => <button key={filter} className="filter-chip">{filter}<ChevronDown size={13} /></button>)}
-        <button className="filter-chip filter-chip--accent"><SlidersHorizontal size={13} /> Más filtros</button>
+        {filters.map((filter) => typeof filter === "string" ? <button key={filter} className="filter-chip" type="button">{filter}<ChevronDown size={13} /></button> : <label key={filter.name} className="filter-chip filter-chip--select"><span>{filter.label}</span><select value={values[filter.name] ?? ""} onChange={(event) => onFilterChange?.(filter.name, event.target.value)}><option value="">Todos</option>{filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
       </div>
     </div>
   );

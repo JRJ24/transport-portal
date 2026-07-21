@@ -51,6 +51,12 @@ export interface FormField {
   required?: boolean;
 }
 
+export interface FilterConfig {
+  label: string;
+  name: string;
+  options: { label: string; value: string }[];
+}
+
 export interface ModuleConfig {
   key: ModuleKey;
   title: string;
@@ -60,5 +66,5 @@ export interface ModuleConfig {
   columns: Column[];
   rows: DataRow[];
   fields: FormField[];
-  filters: string[];
+  filters: Array<string | FilterConfig>;
 }

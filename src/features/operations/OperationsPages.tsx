@@ -1,45 +1,173 @@
-import { useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, CheckCircle2, FileSignature, MapPin, ShieldAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { Button, EntityForm, Modal, PageHeader, StatCard, StatusBadge } from "@/components/ui";
+import { Button, EntityForm, Modal, PageHeader, SearchFilters, StatCard, StatusBadge } from "@/components/ui";
+import { queryKeys } from "@/lib/query-keys";
+import { mapDeliveryProofRow, mapIncidentRow, mapRateCardRow, mapRateRuleRow, tmsService, type AnyRecord } from "@/services/tms.service";
+
+const activeFilter = [
+  { label: "Estado", name: "isActive", options: [{ label: "ACTIVE", value: "true" }, { label: "INACTIVE", value: "false" }] },
+];
 
 export function RatesPage() {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const rules = [
-    ["Van de carga", "RD$ 650 · 38/km · 6/min", "Santo Domingo", "Activa"], ["Camión pequeño", "RD$ 950 · 52/km · 8/min", "Gran SD", "Activa"],
-    ["Furgón 53'", "RD$ 2,400 · 76/km · 12/min", "Nacional", "Activa"], ["Reserva 24h", "+12% cargo programado", "Todas", "Revisión"],
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const query = useMemo(() => ({ search: deferredSearch, ...filters }), [deferredSearch, filters]);
+  const cardsQuery = useQuery({ queryKey: queryKeys.rates(query), queryFn: () => tmsService.rateCards(query) });
+  const cards = cardsQuery.data ?? [];
+  const rows = cards.map(mapRateCardRow);
+  const activeCards = rows.filter((row) => row.estado === "ACTIVE").length;
+  const rules = cards.flatMap((card) => recordArray(card.rateRules).map((rule) => ({ card, row: mapRateRuleRow(rule) })));
+  const selected = rows[0];
+  const fields = [
+    { name: "name", label: "Nombre de tarifa" },
+    { name: "description", label: "Descripción", type: "textarea" as const },
+    { name: "validFrom", label: "Válida desde", type: "date" as const },
+    { name: "validTo", label: "Válida hasta", type: "date" as const, required: false },
+    { name: "isActive", label: "Activa", type: "select" as const, options: ["true", "false"], required: false },
   ];
-  const fields = [{ name: "nombre", label: "Nombre de tarifa" }, { name: "zona", label: "Zona" }, { name: "vehiculo", label: "Categoría de vehículo" }, { name: "base", label: "Precio base", type: "number" as const }, { name: "km", label: "Precio por km", type: "number" as const }, { name: "minuto", label: "Precio por minuto", type: "number" as const }, { name: "recargos", label: "Recargos y horario", type: "textarea" as const }];
+
+  const save = async (values: Record<string, string>) => {
+    try {
+      await tmsService.createRateCard(values);
+      await queryClient.invalidateQueries({ queryKey: ["rates"] });
+      toast.success("Tarifa creada en transport-api");
+      setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo crear la tarifa");
+    }
+  };
+
   return <div><PageHeader title="Tarifas" subtitle="Reglas de precio por zona, vehículo y horario" action="Crear tarifa" onAction={() => setOpen(true)} />
-    <section className="stats-grid"><StatCard stat={{ label: "Tarifas activas", value: "18", helper: "3 rate cards", tone: "blue" }} /><StatCard stat={{ label: "Recargos", value: "7", helper: "2 por horario pico", tone: "orange" }} /><StatCard stat={{ label: "Promedio / km", value: "RD$ 42", helper: "+3.2% este mes", tone: "green" }} /><StatCard stat={{ label: "Cambios hoy", value: "3", helper: "Todos auditados", tone: "slate" }} /></section>
-    <section className="rate-layout"><article className="panel"><div className="panel-heading"><div><h2>Matriz de tarifas</h2><p>Rate cards y reglas vigentes</p></div><div className="segmented"><button className="active">Reglas</button><button>Zonas</button><button>Recargos</button></div></div><div className="rate-table"><div className="rate-row rate-head"><span>Vehículo</span><span>Base / km / min</span><span>Zona</span><span>Estado</span></div>{rules.map((rule) => <button className="rate-row" key={rule[0]}><strong>{rule[0]}</strong><span>{rule[1]}</span><span>{rule[2]}</span><StatusBadge>{rule[3]}</StatusBadge></button>)}</div></article><aside className="dark-insight"><span>Regla seleccionada</span><h3>Camión pequeño · horario pico</h3><p>Se aplica +18% entre 16:00–19:00. El peaje se transfiere al cliente y la espera se factura tras 10 min.</p><div><span>Tarifa mínima</span><strong>RD$ 950</strong></div><div><span>Ayudante</span><strong>RD$ 450</strong></div><div><span>Espera</span><strong>RD$ 8/min</strong></div><StatusBadge>Pendiente aprobación</StatusBadge></aside></section>
-    <Modal open={open} onClose={() => setOpen(false)} title="Crear tarifa" description="Define la regla base, cobertura y recargos." wide><EntityForm fields={fields} onCancel={() => setOpen(false)} onSubmit={() => { toast.success("Tarifa enviada a aprobación"); setOpen(false); }} /></Modal></div>;
+    {cardsQuery.isError && <div className="inline-alert">No se pudieron cargar tarifas desde la API.</div>}
+    {cardsQuery.isLoading && <div className="inline-alert inline-alert--info">Sincronizando tarifas...</div>}
+    <section className="stats-grid"><StatCard stat={{ label: "Tarifas", value: String(rows.length), helper: "Rate cards", tone: "blue" }} /><StatCard stat={{ label: "Activas", value: String(activeCards), helper: "Disponibles para cotizar", tone: "green" }} /><StatCard stat={{ label: "Reglas", value: String(rules.length), helper: "Por categoría", tone: "orange" }} /><StatCard stat={{ label: "Cambios", value: String(rows.length), helper: "Auditables por API", tone: "slate" }} /></section>
+    <SearchFilters search={search} onSearch={setSearch} filters={activeFilter} values={filters} onFilterChange={(name, value) => setFilters((current) => ({ ...current, [name]: value }))} />
+    <section className="rate-layout"><article className="panel"><div className="panel-heading"><div><h2>Matriz de tarifas</h2><p>Rate cards y reglas vigentes</p></div><div className="segmented"><button className="active">Reglas</button></div></div><div className="rate-table"><div className="rate-row rate-head"><span>Tarifa</span><span>Vigencia</span><span>Reglas</span><span>Estado</span></div>{rows.map((row) => <button className="rate-row" key={row.id}><strong>{row.nombre}</strong><span>{row.vigencia}</span><span>{row.reglas}</span><StatusBadge>{row.estado}</StatusBadge></button>)}</div></article><aside className="dark-insight"><span>Tarifa seleccionada</span><h3>{String(selected?.nombre ?? "Sin tarifa")}</h3><p>{String(selected?.descripcion ?? "No hay rate card seleccionado o el filtro no devolvió resultados.")}</p>{rules.slice(0, 3).map(({ row }) => <div key={row.id}><span>{row.vehiculo}</span><strong>RD$ {Number(row.base).toLocaleString("es-DO")} · {row.km}/km · {row.minuto}/min</strong></div>)}<StatusBadge>{String(selected?.estado ?? "SIN DATOS")}</StatusBadge></aside></section>
+    <Modal open={open} onClose={() => setOpen(false)} title="Crear tarifa" description="Define el rate card base. Las reglas se agregan al rate card desde pricing/rules." wide><EntityForm fields={fields} onCancel={() => setOpen(false)} onSubmit={save} submitLabel="Crear tarifa" /></Modal></div>;
 }
 
-const incidents = [
-  { id: "ORD-000132", title: "Retraso por tráfico", meta: "Asignar operador", status: "Crítica", sla: "18 min" },
-  { id: "ORD-000140", title: "Cliente no responde", meta: "Juan Pérez", status: "Media", sla: "42 min" },
-  { id: "ORD-000151", title: "Carga incompleta", meta: "Asignar operador", status: "Alta", sla: "1 h 08" },
-  { id: "ORD-000155", title: "GPS inestable", meta: "Carlos Díaz", status: "Baja", sla: "2 h 14" },
+const incidentFilters = [
+  { label: "Estado", name: "status", options: ["OPEN", "IN_REVIEW", "RESOLVED", "CLOSED"].map((value) => ({ label: value, value })) },
+  { label: "Severidad", name: "severity", options: ["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((value) => ({ label: value, value })) },
 ];
 
 export function IncidentsPage() {
-  const [selected, setSelected] = useState(incidents[0]); const [open, setOpen] = useState(false);
-  const fields = [{ name: "orden", label: "Orden" }, { name: "tipo", label: "Tipo", type: "select" as const, options: ["Retraso", "Daño", "Cliente ausente", "Dirección incorrecta", "Problema del vehículo", "Otro"] }, { name: "severidad", label: "Severidad", type: "select" as const, options: ["Baja", "Media", "Alta", "Crítica"] }, { name: "responsable", label: "Responsable" }, { name: "descripcion", label: "Descripción", type: "textarea" as const }];
-  return <div><PageHeader title="Incidencias" subtitle="Clasificación, SLA y resolución operativa" action="Reportar incidencia" onAction={() => setOpen(true)} /><section className="stats-grid"><StatCard stat={{ label: "Abiertas", value: "9", helper: "4 nuevas hoy", tone: "orange" }} /><StatCard stat={{ label: "Críticas", value: "2", helper: "Atención inmediata", tone: "red" }} /><StatCard stat={{ label: "SLA vencido", value: "1", helper: "Escalada a gerencia", tone: "red" }} /><StatCard stat={{ label: "Resueltas hoy", value: "14", helper: "Promedio 36 min", tone: "green" }} /></section>
-    <section className="incident-layout"><article className="panel incident-queue"><div className="panel-heading"><div><h2>Cola priorizada</h2><p>Ordenada por severidad y tiempo restante</p></div></div>{incidents.map((incident) => <button className={selected.id === incident.id ? "selected" : ""} key={incident.id} onClick={() => setSelected(incident)}><ShieldAlert size={18} /><span><strong>{incident.id}</strong><small>{incident.title} · {incident.meta}</small></span><em>SLA {incident.sla}</em><StatusBadge>{incident.status}</StatusBadge></button>)}</article><article className="panel incident-detail"><div className="panel-heading"><div><span className="eyebrow">Detalle</span><h2>{selected.id}</h2></div><StatusBadge>{selected.status}</StatusBadge></div><h3>{selected.title}</h3><p>Ruta: Herrera → Boca Chica<br />Conductor: Carlos Díaz<br />SLA restante: {selected.sla}</p><div className="timeline"><div><i /><span><strong>Incidencia reportada</strong><small>11:05 · Carlos Díaz</small></span></div><div><i /><span><strong>Operador notificado</strong><small>11:06 · Sistema</small></span></div><div className="pending"><i /><span><strong>Esperando resolución</strong><small>Adjunta comentario o evidencia</small></span></div></div><textarea placeholder="Agregar comentario interno..." /><div className="incident-actions"><Button variant="danger">Escalar</Button><Button onClick={() => toast.success("Incidencia resuelta")}>Resolver</Button></div></article></section>
-    <Modal open={open} onClose={() => setOpen(false)} title="Reportar incidencia" description="Registra severidad, ubicación y responsable." wide><EntityForm fields={fields} onCancel={() => setOpen(false)} onSubmit={() => { toast.success("Incidencia reportada y SLA iniciado"); setOpen(false); }} /></Modal></div>;
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [comment, setComment] = useState("");
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const query = useMemo(() => ({ search: deferredSearch, ...filters }), [deferredSearch, filters]);
+  const incidentsQuery = useQuery({ queryKey: queryKeys.incidents(query), queryFn: () => tmsService.incidents(query), refetchInterval: 30000 });
+  const incidents = incidentsQuery.data ?? [];
+  const rows = incidents.map(mapIncidentRow);
+  const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
+  const fields = [
+    { name: "orderId", label: "ID de orden" },
+    { name: "incidentType", label: "Tipo", type: "select" as const, options: ["DELAY", "DAMAGE", "CUSTOMER_ABSENT", "WRONG_ADDRESS", "VEHICLE_PROBLEM", "OTHER"] },
+    { name: "severity", label: "Severidad", type: "select" as const, options: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    { name: "title", label: "Título" },
+    { name: "description", label: "Descripción", type: "textarea" as const },
+    { name: "latitude", label: "Latitud", type: "number" as const },
+    { name: "longitude", label: "Longitud", type: "number" as const },
+  ];
+
+  const save = async (values: Record<string, string>) => {
+    try {
+      await tmsService.createIncident(values);
+      await queryClient.invalidateQueries({ queryKey: ["incidents"] });
+      toast.success("Incidencia reportada en transport-api");
+      setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo reportar la incidencia");
+    }
+  };
+
+  const resolve = async () => {
+    if (!selected) return;
+    await tmsService.updateIncidentStatus(String(selected.id), "RESOLVED");
+    await queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    toast.success("Incidencia resuelta");
+  };
+
+  const addComment = async () => {
+    if (!selected || !comment.trim()) return;
+    await tmsService.addIncidentComment(String(selected.id), comment);
+    setComment("");
+    await queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    toast.success("Comentario agregado");
+  };
+
+  return <div><PageHeader title="Incidencias" subtitle="Clasificación, SLA y resolución operativa" action="Reportar incidencia" onAction={() => setOpen(true)} />
+    {incidentsQuery.isError && <div className="inline-alert">No se pudieron cargar incidencias desde la API.</div>}
+    {incidentsQuery.isLoading && <div className="inline-alert inline-alert--info">Sincronizando incidencias...</div>}
+    <section className="stats-grid"><StatCard stat={{ label: "Abiertas", value: String(count(rows, "OPEN")), helper: "Requieren atención", tone: "orange" }} /><StatCard stat={{ label: "Críticas", value: String(count(rows, "CRITICAL", "severidad")), helper: "Atención inmediata", tone: "red" }} /><StatCard stat={{ label: "En revisión", value: String(count(rows, "IN_REVIEW")), helper: "Operador asignado", tone: "slate" }} /><StatCard stat={{ label: "Resueltas", value: String(count(rows, "RESOLVED")), helper: "Histórico filtrado", tone: "green" }} /></section>
+    <SearchFilters search={search} onSearch={setSearch} filters={incidentFilters} values={filters} onFilterChange={(name, value) => setFilters((current) => ({ ...current, [name]: value }))} />
+    <section className="incident-layout"><article className="panel incident-queue"><div className="panel-heading"><div><h2>Cola priorizada</h2><p>Ordenada por severidad y API filters</p></div></div>{rows.map((incident) => <button className={selected?.id === incident.id ? "selected" : ""} key={incident.id} onClick={() => setSelectedId(String(incident.id))}><ShieldAlert size={18} /><span><strong>{incident.orden}</strong><small>{incident.titulo} · {incident.tipo}</small></span><em>{incident.fecha}</em><StatusBadge>{incident.severidad}</StatusBadge></button>)}</article><article className="panel incident-detail"><div className="panel-heading"><div><span className="eyebrow">Detalle</span><h2>{String(selected?.orden ?? "Sin selección")}</h2></div><StatusBadge>{String(selected?.estado ?? "SIN DATOS")}</StatusBadge></div><h3>{String(selected?.titulo ?? "Selecciona una incidencia")}</h3><p>Tipo: {String(selected?.tipo ?? "--")}<br />Severidad: {String(selected?.severidad ?? "--")}<br />Reportada: {String(selected?.fecha ?? "--")}</p><textarea placeholder="Agregar comentario interno..." value={comment} onChange={(event) => setComment(event.target.value)} /><div className="incident-actions"><Button variant="secondary" onClick={addComment}>Comentar</Button><Button variant="danger" onClick={() => toast.info("Escalamiento pendiente de endpoint dedicado")}>Escalar</Button><Button onClick={resolve}>Resolver</Button></div></article></section>
+    <Modal open={open} onClose={() => setOpen(false)} title="Reportar incidencia" description="Registra severidad, ubicación y responsable." wide><EntityForm fields={fields} onCancel={() => setOpen(false)} onSubmit={save} /></Modal></div>;
 }
 
-const proofs = [
-  ["ORD-000124", "Foto + GPS validado", "Aprobada", Camera], ["ORD-000125", "Firma pendiente", "Pendiente", FileSignature], ["ORD-000126", "Foto + GPS validado", "Aprobada", Camera],
-  ["ORD-000127", "Firma pendiente", "Pendiente", FileSignature], ["ORD-000128", "Foto + GPS validado", "Aprobada", Camera], ["ORD-000129", "Firma pendiente", "Pendiente", FileSignature],
+const evidenceFilters = [
+  { label: "Estado", name: "validationStatus", options: ["PENDING", "VALIDATED", "REJECTED"].map((value) => ({ label: value, value })) },
+  { label: "Tipo", name: "proofType", options: ["PHOTO", "SIGNATURE", "QR", "CODE", "MIXED"].map((value) => ({ label: value, value })) },
 ];
 
 export function EvidencePage() {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const fields = [{ name: "orden", label: "Orden" }, { name: "receptor", label: "Nombre del receptor" }, { name: "documento", label: "Documento del receptor" }, { name: "hora", label: "Fecha y hora", type: "date" as const }, { name: "coordenadas", label: "Coordenadas GPS" }, { name: "comentario", label: "Comentario", type: "textarea" as const }];
-  return <div><PageHeader title="Evidencias" subtitle="Fotos, firmas y coordenadas de entrega" action="Subir evidencia" onAction={() => setOpen(true)} /><section className="stats-grid"><StatCard stat={{ label: "Por revisar", value: "21", helper: "3 críticas", tone: "orange" }} /><StatCard stat={{ label: "Aprobadas", value: "88", helper: "Hoy", tone: "green" }} /><StatCard stat={{ label: "Rechazadas", value: "4", helper: "Imagen ilegible", tone: "red" }} /><StatCard stat={{ label: "Sin firma", value: "6", helper: "Requieren contacto", tone: "slate" }} /></section>
-    <section className="panel evidence-board"><div className="panel-heading"><div><h2>Bandeja de revisión</h2><p>Validación visual y automática</p></div><div className="segmented"><button className="active">Galería</button><button>Tabla</button></div></div><div className="proof-grid">{proofs.map(([id, label, status, Icon]) => <button key={String(id)}><div className="proof-preview"><Icon size={30} /><span className="gps-chip"><MapPin size={12} /> SDQ</span></div><span><strong>{String(id)}</strong><small>{String(label)}</small></span><StatusBadge>{String(status)}</StatusBadge></button>)}</div></section><section className="validation-banner"><CheckCircle2 size={24} /><div><strong>Validación automática activa</strong><p>Coordenadas, hora de entrega, firma y foto se cruzan contra la orden antes de facturar.</p></div><span>96.8% precisión</span></section>
-    <Modal open={open} onClose={() => setOpen(false)} title="Subir evidencias" description="Añade archivos, firma y ubicación de entrega." wide><div className="upload-zone"><Upload size={24} /><strong>Arrastra fotos o documentos</strong><span>JPG, PNG o PDF · máximo 10 MB</span></div><EntityForm fields={fields} onCancel={() => setOpen(false)} onSubmit={() => { toast.success("Evidencia cargada para validación"); setOpen(false); }} /></Modal></div>;
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const query = useMemo(() => ({ search: deferredSearch, ...filters }), [deferredSearch, filters]);
+  const proofsQuery = useQuery({ queryKey: queryKeys.evidence(query), queryFn: () => tmsService.deliveryProofs(query), refetchInterval: 30000 });
+  const rows = (proofsQuery.data ?? []).map(mapDeliveryProofRow);
+  const fields = [
+    { name: "orderId", label: "ID de orden" },
+    { name: "proofType", label: "Tipo", type: "select" as const, options: ["PHOTO", "SIGNATURE", "QR", "CODE", "MIXED"] },
+    { name: "recipientName", label: "Nombre del receptor" },
+    { name: "recipientDocument", label: "Documento del receptor" },
+    { name: "latitude", label: "Latitud", type: "number" as const },
+    { name: "longitude", label: "Longitud", type: "number" as const },
+    { name: "notes", label: "Comentario", type: "textarea" as const, required: false },
+  ];
+
+  const save = async (values: Record<string, string>) => {
+    try {
+      await tmsService.createDeliveryProof(values);
+      await queryClient.invalidateQueries({ queryKey: ["evidence"] });
+      toast.success("Evidencia registrada en transport-api");
+      setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo registrar la evidencia");
+    }
+  };
+
+  const validate = async (id: string, validationStatus: string) => {
+    await tmsService.validateDeliveryProof(id, validationStatus);
+    await queryClient.invalidateQueries({ queryKey: ["evidence"] });
+    toast.success(`Evidencia ${validationStatus.toLowerCase()}`);
+  };
+
+  return <div><PageHeader title="Evidencias" subtitle="Fotos, firmas y coordenadas de entrega" action="Subir evidencia" onAction={() => setOpen(true)} />
+    {proofsQuery.isError && <div className="inline-alert">No se pudieron cargar evidencias desde la API.</div>}
+    {proofsQuery.isLoading && <div className="inline-alert inline-alert--info">Sincronizando evidencias...</div>}
+    <section className="stats-grid"><StatCard stat={{ label: "Por revisar", value: String(count(rows, "PENDING")), helper: "Validación pendiente", tone: "orange" }} /><StatCard stat={{ label: "Aprobadas", value: String(count(rows, "VALIDATED")), helper: "Datos API", tone: "green" }} /><StatCard stat={{ label: "Rechazadas", value: String(count(rows, "REJECTED")), helper: "Requieren corrección", tone: "red" }} /><StatCard stat={{ label: "Total", value: String(rows.length), helper: "Filtro actual", tone: "slate" }} /></section>
+    <SearchFilters search={search} onSearch={setSearch} filters={evidenceFilters} values={filters} onFilterChange={(name, value) => setFilters((current) => ({ ...current, [name]: value }))} />
+    <section className="panel evidence-board"><div className="panel-heading"><div><h2>Bandeja de revisión</h2><p>Validación visual y automática</p></div><div className="segmented"><button className="active">Galería</button></div></div><div className="proof-grid">{rows.map((proof) => { const Icon = proof.tipo === "SIGNATURE" ? FileSignature : Camera; return <button key={String(proof.id)} onDoubleClick={() => validate(String(proof.id), "VALIDATED")}><div className="proof-preview"><Icon size={30} /><span className="gps-chip"><MapPin size={12} /> GPS</span></div><span><strong>{String(proof.orden)}</strong><small>{String(proof.receptor)} · {String(proof.tipo)}</small></span><StatusBadge>{String(proof.estado)}</StatusBadge></button>; })}</div></section><section className="validation-banner"><CheckCircle2 size={24} /><div><strong>Validación automática activa</strong><p>Coordenadas, hora de entrega, firma y foto se cruzan contra la orden antes de facturar.</p></div><span>{rows.length ? `${Math.round((count(rows, "VALIDATED") / rows.length) * 100)}%` : "0%"} validado</span></section>
+    <Modal open={open} onClose={() => setOpen(false)} title="Subir evidencias" description="Registra metadata, firma y ubicación de entrega." wide><div className="upload-zone"><Upload size={24} /><strong>Adjuntos vía /attachments</strong><span>Este formulario registra delivery-proof; archivos se vinculan como attachments.</span></div><EntityForm fields={fields} onCancel={() => setOpen(false)} onSubmit={save} /></Modal></div>;
+}
+
+function count(rows: Array<Record<string, string | number>>, value: string, field = "estado") {
+  return rows.filter((row) => String(row[field]) === value).length;
+}
+
+function recordArray(value: unknown): AnyRecord[] {
+  return Array.isArray(value) ? value.filter((item): item is AnyRecord => Boolean(item && typeof item === "object" && !Array.isArray(item))) : [];
 }
