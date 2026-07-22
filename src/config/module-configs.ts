@@ -1,8 +1,8 @@
 import type { ModuleConfig } from "@/types/domain";
 
 const commonOrderFields = [
-  { name: "customerId", label: "ID del cliente", placeholder: "UUID del customer profile" },
-  { name: "vehicleCategoryId", label: "ID categoría vehículo", placeholder: "UUID de categoría" },
+  { name: "customerId", label: "Cliente", type: "select" as const, options: [] },
+  { name: "vehicleCategoryId", label: "Categoría de vehículo", type: "select" as const, options: [] },
   { name: "serviceType", label: "Tipo de servicio", type: "select" as const, options: ["INMEDIATE", "SCHEDULED"] },
   { name: "scheduleAt", label: "Fecha programada", type: "date" as const, required: false },
   { name: "originContactName", label: "Contacto origen", placeholder: "Nombre" },
@@ -60,7 +60,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { label: "Incidentes", value: "2", helper: "Últimos 30 días", tone: "red" }, { label: "Calificación", value: "4.87", helper: "Promedio de flota", tone: "blue" },
     ],
     columns: [
-      { key: "id", label: "ID", type: "strong" }, { key: "nombre", label: "Conductor", type: "strong" }, { key: "licencia", label: "Licencia" },
+      { key: "nombre", label: "Conductor", type: "strong" }, { key: "licencia", label: "Licencia" },
       { key: "vencimiento", label: "Vencimiento" }, { key: "verificacion", label: "Verificación", type: "status" }, { key: "score", label: "Score" }, { key: "estado", label: "Estado", type: "status" },
     ],
     rows: [],
@@ -69,7 +69,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { label: "Verificación", name: "verificationStatus", options: ["PENDING", "APPROVED", "REJECTED"].map((value) => ({ label: value, value })) },
     ],
     fields: [
-      { name: "userId", label: "ID de usuario" }, { name: "licenseNumber", label: "Número de licencia" }, { name: "licenseExpiration", label: "Vencimiento", type: "date" },
+      { name: "userId", label: "Usuario conductor", type: "select", options: [] }, { name: "licenseNumber", label: "Número de licencia" }, { name: "licenseExpiration", label: "Vencimiento", type: "date" },
       { name: "availabilityStatus", label: "Estado", type: "select", options: ["AVAILABLE", "BUSY", "OFFLINE", "SUSPENDED", "VACATION"], required: false },
       { name: "verificationStatus", label: "Verificación", type: "select", options: ["PENDING", "APPROVED", "REJECTED"], required: false },
     ],
@@ -81,7 +81,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { label: "Utilización", value: "82%", helper: "+4% este mes", tone: "blue" }, { label: "Docs. por vencer", value: "4", helper: "Próximos 15 días", tone: "orange" },
     ],
     columns: [
-      { key: "id", label: "Unidad", type: "strong" }, { key: "placa", label: "Placa", type: "strong" }, { key: "tipo", label: "Categoría" },
+      { key: "placa", label: "Unidad", type: "strong" }, { key: "tipo", label: "Categoría" },
       { key: "marca", label: "Marca / modelo" }, { key: "anio", label: "Año" }, { key: "documentos", label: "Docs." }, { key: "estado", label: "Estado", type: "status" },
     ],
     rows: [],
@@ -89,7 +89,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { label: "Estado", name: "status", options: ["ACTIVE", "MAINTENANCE", "INACTIVE", "SUSPENDED"].map((value) => ({ label: value, value })) },
     ],
     fields: [
-      { name: "driverId", label: "ID del conductor" }, { name: "categoryId", label: "ID de categoría" }, { name: "plateNumber", label: "Placa" },
+      { name: "driverId", label: "Conductor", type: "select", options: [] }, { name: "categoryId", label: "Categoría", type: "select", options: [] }, { name: "plateNumber", label: "Placa" },
       { name: "brand", label: "Marca" }, { name: "model", label: "Modelo" }, { name: "year", label: "Año", type: "number" },
       { name: "color", label: "Color" }, { name: "status", label: "Estado", type: "select", options: ["ACTIVE", "MAINTENANCE", "INACTIVE", "SUSPENDED"], required: false },
     ],
@@ -101,7 +101,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { label: "Volumen mes", value: "8.4k", helper: "+12.4% vs. junio", tone: "blue" }, { label: "NPS", value: "72", helper: "Excelente", tone: "green" },
     ],
     columns: [
-      { key: "id", label: "Cuenta", type: "strong" }, { key: "cliente", label: "Cliente", type: "strong" }, { key: "tipo", label: "Tipo" },
+      { key: "cliente", label: "Cuenta", type: "strong" }, { key: "tipo", label: "Tipo" },
       { key: "documento", label: "Documento" }, { key: "volumen", label: "Volumen" }, { key: "cobro", label: "Cobro" }, { key: "estado", label: "Estado", type: "status" },
     ],
     rows: [],

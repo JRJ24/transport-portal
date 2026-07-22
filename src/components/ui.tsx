@@ -104,7 +104,7 @@ export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit,
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <div className="form-grid">
-        {fields.map((field) => <label key={field.name} className={field.type === "textarea" ? "span-2" : ""}><span>{field.label}{field.required === false ? " (opcional)" : ""}</span>{field.type === "select" ? <select {...register(field.name)}><option value="">Seleccionar</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select> : field.type === "textarea" ? <textarea rows={3} placeholder={field.placeholder} {...register(field.name)} /> : <input type={field.type ?? "text"} placeholder={field.placeholder} {...register(field.name)} />}{errors[field.name] && <small className="field-error">{String(errors[field.name]?.message)}</small>}</label>)}
+        {fields.map((field) => <label key={field.name} className={field.type === "textarea" ? "span-2" : ""}><span>{field.label}{field.required === false ? " (opcional)" : ""}</span>{field.type === "select" ? <select {...register(field.name)}><option value="">Seleccionar</option>{field.options?.map((option) => { const normalized = normalizeOption(option); return <option key={normalized.value} value={normalized.value}>{normalized.label}</option>; })}</select> : field.type === "textarea" ? <textarea rows={3} placeholder={field.placeholder} {...register(field.name)} /> : <input type={field.type ?? "text"} placeholder={field.placeholder} {...register(field.name)} />}{errors[field.name] && <small className="field-error">{String(errors[field.name]?.message)}</small>}</label>)}
       </div>
       <div className="form-summary"><span><Check size={16} /> Validación automática activa</span><strong>Los cambios quedarán registrados en auditoría.</strong></div>
       <footer className="modal-actions"><Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Guardando..." : submitLabel}</Button></footer>
@@ -113,9 +113,21 @@ export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit,
 }
 
 export function Drawer({ row, onClose }: { row: DataRow | null; onClose: () => void }) {
-  return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{row.id}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className="active">General</button><button>Actividad</button><button>Documentos</button><button>Auditoría</button></nav><div className="drawer-body">{Object.entries(row).map(([key, value]) => <div className="detail-field" key={key}><span>{key.replace(/_/g, " ")}</span><strong>{String(value)}</strong></div>)}</div><footer><Button variant="secondary">Ver historial</Button><Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
+  return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{displayName(row)}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className="active">General</button><button>Actividad</button><button>Documentos</button><button>Auditoría</button></nav><div className="drawer-body">{Object.entries(row).filter(([key]) => !isInternalField(key)).map(([key, value]) => <div className="detail-field" key={key}><span>{key.replace(/_/g, " ")}</span><strong>{String(value)}</strong></div>)}</div><footer><Button variant="secondary">Ver historial</Button><Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
 }
 
 export function ConfirmDialog({ row, onCancel, onConfirm }: { row: DataRow | null; onCancel: () => void; onConfirm: () => void }) {
-  return <Modal open={Boolean(row)} onClose={onCancel} title="Confirmar eliminación" description="Esta acción no se puede deshacer."><div className="confirm-copy">¿Deseas eliminar <strong>{row?.id}</strong>? El evento quedará registrado en auditoría.</div><footer className="modal-actions"><Button variant="secondary" onClick={onCancel}>Conservar</Button><Button variant="danger" onClick={onConfirm}>Sí, eliminar</Button></footer></Modal>;
+  return <Modal open={Boolean(row)} onClose={onCancel} title="Confirmar eliminación" description="Esta acción no se puede deshacer."><div className="confirm-copy">¿Deseas eliminar <strong>{row ? displayName(row) : "este registro"}</strong>? El evento quedará registrado en auditoría.</div><footer className="modal-actions"><Button variant="secondary" onClick={onCancel}>Conservar</Button><Button variant="danger" onClick={onConfirm}>Sí, eliminar</Button></footer></Modal>;
+}
+
+function normalizeOption(option: string | { label: string; value: string }) {
+  return typeof option === "string" ? { label: option, value: option } : option;
+}
+
+function isInternalField(key: string) {
+  return key === "_id" || key === "entityId" || /(^|_)\w*Id$/.test(key);
+}
+
+function displayName(row: DataRow) {
+  return String(row.orden ?? row.cliente ?? row.nombre ?? row.placa ?? row.usuario ?? row.id);
 }

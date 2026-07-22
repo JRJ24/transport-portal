@@ -4,7 +4,16 @@ import { Activity, Bell, ChevronRight, Cloud, Download, KeyRound, Map, PlugZap, 
 import { toast } from "sonner";
 import { Button, DataTable, EntityForm, Modal, PageHeader, SearchFilters, StatCard, StatusBadge } from "@/components/ui";
 import { queryKeys } from "@/lib/query-keys";
-import { mapAuditRow, mapCatalogRow, mapParameterRow, mapUserRow, tmsService, type AnyRecord } from "@/services/tms.service";
+import { mapAuditRow, mapCatalogRow, mapParameterRow, mapUserRow, tmsService, type AnyRecord, type ReportFormat } from "@/services/tms.service";
+
+const exportButtons: Array<{ label: string; type: "operations" | "billing"; format: ReportFormat }> = [
+  { label: "Operaciones CSV", type: "operations", format: "csv" },
+  { label: "Operaciones Excel", type: "operations", format: "xlsx" },
+  { label: "Operaciones PDF", type: "operations", format: "pdf" },
+  { label: "Facturación CSV", type: "billing", format: "csv" },
+  { label: "Facturación Excel", type: "billing", format: "xlsx" },
+  { label: "Facturación PDF", type: "billing", format: "pdf" },
+];
 
 export function ReportsPage() {
   const [range, setRange] = useState<"7" | "30">("7");
@@ -23,22 +32,22 @@ export function ReportsPage() {
   const revenue = sumAmount(paymentGroups);
   const chartValues = normalizeBars(orderGroups.map((group) => groupCount(group)));
 
-  const exportReport = (name: string) => {
-    const blob = new Blob([JSON.stringify({ operations, billing }, null, 2)], { type: "application/json" });
+  const exportReport = async (type: "operations" | "billing", format: ReportFormat) => {
+    const blob = await tmsService.exportReport(type, format, query);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${name.toLowerCase().replaceAll(" ", "-")}.json`;
+    link.download = `${type}-${range}d.${format === "xlsx" ? "xls" : format}`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success(`${name} preparado con datos API`);
+    toast.success(`Reporte ${type} exportado en ${format.toUpperCase()}`);
   };
 
   return <div><PageHeader title="Reportes" subtitle="Rendimiento operativo, ingresos y SLA" />
     {(operationsQuery.isLoading || billingQuery.isLoading) && <div className="inline-alert inline-alert--info">Generando reportes desde transport-api...</div>}
     {(operationsQuery.isError || billingQuery.isError) && <div className="inline-alert">No se pudieron cargar los reportes.</div>}
     <section className="stats-grid"><StatCard stat={{ label: "Ingresos", value: `RD$ ${revenue.toLocaleString("es-DO")}`, helper: `Últimos ${range} días`, tone: "slate" }} /><StatCard stat={{ label: "OTD", value: totalOrders ? `${Math.round((delivered / totalOrders) * 100)}%` : "0%", helper: "Entregadas / total", tone: "green" }} /><StatCard stat={{ label: "Órdenes", value: String(totalOrders), helper: "Agrupadas por estado", tone: "blue" }} /><StatCard stat={{ label: "Incidencias", value: String(incidents), helper: "Por estado", tone: "orange" }} /></section>
-    <section className="reports-layout"><article className="panel report-chart"><div className="panel-heading"><div><h2>Órdenes por estado</h2><p>Periodo seleccionado</p></div><div className="segmented"><button className={range === "7" ? "active" : ""} onClick={() => setRange("7")}>7 días</button><button className={range === "30" ? "active" : ""} onClick={() => setRange("30")}>30 días</button></div></div><div className="bar-chart">{chartValues.map((value, index) => <div key={index}><span style={{ height: `${value}%` }} className={index === 0 ? "highlight" : ""}><em>{value}</em></span><small>{String(orderGroups[index]?.status ?? "--").slice(0, 3)}</small></div>)}</div></article><aside className="panel export-panel"><div className="panel-heading"><div><h2>Exportar</h2><p>Archivos listos para conciliación</p></div></div>{["Operaciones JSON", "Facturación JSON", "Incidencias JSON", "Evidencias JSON"].map((name) => <button key={name} onClick={() => exportReport(name)}><Download size={16} /><span>{name}</span><ChevronRight size={15} /></button>)}</aside></section>
+    <section className="reports-layout"><article className="panel report-chart"><div className="panel-heading"><div><h2>Órdenes por estado</h2><p>Periodo seleccionado</p></div><div className="segmented"><button className={range === "7" ? "active" : ""} onClick={() => setRange("7")}>7 días</button><button className={range === "30" ? "active" : ""} onClick={() => setRange("30")}>30 días</button></div></div><div className="bar-chart">{chartValues.map((value, index) => <div key={index}><span style={{ height: `${value}%` }} className={index === 0 ? "highlight" : ""}><em>{value}</em></span><small>{String(orderGroups[index]?.status ?? "--").slice(0, 3)}</small></div>)}</div></article><aside className="panel export-panel"><div className="panel-heading"><div><h2>Exportar</h2><p>CSV, Excel y PDF desde API</p></div></div>{exportButtons.map((item) => <button key={`${item.type}-${item.format}`} onClick={() => void exportReport(item.type, item.format)}><Download size={16} /><span>{item.label}</span><ChevronRight size={15} /></button>)}</aside></section>
     <section className="panel indicators"><div className="panel-heading"><div><h2>Indicadores clave</h2><p>Comparación del filtro actual</p></div></div><div><span>Entregas</span><strong>{delivered} completadas</strong><em className="positive">{totalOrders} órdenes totales</em><StatusBadge>API</StatusBadge></div><div><span>Evidencias</span><strong>{sumCount(proofGroups)} registros</strong><em>Validación por estado</em><StatusBadge>Activo</StatusBadge></div><div><span>Pagos</span><strong>{paymentGroups.length} estados</strong><em className="positive">RD$ {revenue.toLocaleString("es-DO")}</em><StatusBadge>Billing</StatusBadge></div></section></div>;
 }
 
@@ -112,7 +121,7 @@ export function SettingsPage() {
     { name: "fullName", label: "Nombre completo" },
     { name: "email", label: "Correo", type: "email" as const },
     { name: "phone", label: "Teléfono" },
-    { name: "password", label: "Contraseña temporal" },
+    { name: "password", label: "Contraseña temporal", type: "password" as const },
     { name: "roles", label: "Roles separados por coma", placeholder: "ADMIN, OPERATOR" },
   ];
 

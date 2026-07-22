@@ -1,4 +1,4 @@
-import { Truck } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
 import type { LiveLocation } from "@/services/tms.service";
 
@@ -21,21 +21,9 @@ export function LiveMap({ compact = false, locations = [] }: { compact?: boolean
     );
   }
 
-  const liveMarkers = locations.slice(0, 8).map((location, index) => ({
-    id: location.orderId.slice(0, 8),
-    type: "green",
-    x: 20 + ((index * 17) % 60),
-    y: 24 + ((index * 13) % 56),
-    icon: Truck,
-  }));
   return (
     <div className={`live-map ${compact ? "live-map--compact" : ""}`}>
-      <div className="map-grid" />
-      <div className="road road--one" /><div className="road road--two" /><div className="road road--three" /><div className="road road--four" />
-      <div className="map-water" />
-      {liveMarkers.map((marker) => <div key={marker.id} className={`map-marker map-marker--${marker.type}`} style={{ left: `${marker.x}%`, top: `${marker.y}%` }}><marker.icon size={13} /><span>{marker.id}</span></div>)}
-      {!liveMarkers.length && <div className="map-empty"><Truck size={18} /><span>Sin GPS real recibido</span></div>}
-      {!compact && <div className="map-legend"><span><i className="blue" /> En ruta</span><span><i className="green" /> Disponible</span><span><i className="orange" /> Alerta</span></div>}
+      <div className="map-empty"><MapPin size={18} /><span>Configura VITE_GOOGLE_MAPS_API_KEY para activar Google Maps</span>{locations.length > 0 && <small>{locations.length} ubicación(es) GPS reales recibidas</small>}</div>
     </div>
   );
 }

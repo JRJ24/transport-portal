@@ -210,7 +210,7 @@ altApi.interceptors.response.use(
     ) {
       original._transientTried = true;
       await new Promise((r) => setTimeout(r, 800));
-      return api(original);
+      return altApi(original);
     }
 
     const requestUrl = original?.url ?? "";
@@ -238,7 +238,7 @@ altApi.interceptors.response.use(
             original.headers.Authorization = `Bearer ${newToken}`;
           }
 
-          return api(original);
+          return altApi(original);
         } catch (e) {
           processQueue(undefined);
           tokenManager.clear();
@@ -258,7 +258,7 @@ altApi.interceptors.response.use(
           if (original.headers) {
             original.headers.Authorization = `Bearer ${token}`;
           }
-          resolve(api(original));
+          resolve(altApi(original));
         });
       });
     }

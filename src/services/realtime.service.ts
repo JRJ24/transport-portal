@@ -35,9 +35,12 @@ export function useLiveLocations(orderIds: string[] = []) {
     const ids = orderIdsKey ? orderIdsKey.split('|').filter(Boolean) : [];
     ids.forEach((orderId) => socket.emit('tracking:join-order', { orderId }));
 
-    socket.on('tracking:location', (location: LiveLocation) => {
+    const updateLocation = (location: LiveLocation) => {
       setLocations((current) => ({ ...current, [location.orderId]: location }));
-    });
+    };
+
+    socket.on('tracking:location', updateLocation);
+    socket.on('tracking:location.updated', updateLocation);
 
     return () => {
       ids.forEach((orderId) => socket.emit('tracking:leave-order', { orderId }));

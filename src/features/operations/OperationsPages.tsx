@@ -4,7 +4,7 @@ import { Camera, CheckCircle2, FileSignature, MapPin, ShieldAlert, Upload } from
 import { toast } from "sonner";
 import { Button, EntityForm, Modal, PageHeader, SearchFilters, StatCard, StatusBadge } from "@/components/ui";
 import { queryKeys } from "@/lib/query-keys";
-import { mapDeliveryProofRow, mapIncidentRow, mapRateCardRow, mapRateRuleRow, tmsService, type AnyRecord } from "@/services/tms.service";
+import { mapDeliveryProofRow, mapIncidentRow, mapOrderRow, mapRateCardRow, mapRateRuleRow, tmsService, type AnyRecord } from "@/services/tms.service";
 
 const activeFilter = [
   { label: "Estado", name: "isActive", options: [{ label: "ACTIVE", value: "true" }, { label: "INACTIVE", value: "false" }] },
@@ -66,11 +66,12 @@ export function IncidentsPage() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const query = useMemo(() => ({ search: deferredSearch, ...filters }), [deferredSearch, filters]);
   const incidentsQuery = useQuery({ queryKey: queryKeys.incidents(query), queryFn: () => tmsService.incidents(query), refetchInterval: 30000 });
+  const ordersQuery = useQuery({ queryKey: ["lookup", "orders", "incidents"], queryFn: () => tmsService.orders(), enabled: open });
   const incidents = incidentsQuery.data ?? [];
   const rows = incidents.map(mapIncidentRow);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
   const fields = [
-    { name: "orderId", label: "ID de orden" },
+    { name: "orderId", label: "Orden", type: "select" as const, options: orderOptions(ordersQuery.data ?? []) },
     { name: "incidentType", label: "Tipo", type: "select" as const, options: ["DELAY", "DAMAGE", "CUSTOMER_ABSENT", "WRONG_ADDRESS", "VEHICLE_PROBLEM", "OTHER"] },
     { name: "severity", label: "Severidad", type: "select" as const, options: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
     { name: "title", label: "Título" },
@@ -127,9 +128,10 @@ export function EvidencePage() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const query = useMemo(() => ({ search: deferredSearch, ...filters }), [deferredSearch, filters]);
   const proofsQuery = useQuery({ queryKey: queryKeys.evidence(query), queryFn: () => tmsService.deliveryProofs(query), refetchInterval: 30000 });
+  const ordersQuery = useQuery({ queryKey: ["lookup", "orders", "evidence"], queryFn: () => tmsService.orders(), enabled: open });
   const rows = (proofsQuery.data ?? []).map(mapDeliveryProofRow);
   const fields = [
-    { name: "orderId", label: "ID de orden" },
+    { name: "orderId", label: "Orden", type: "select" as const, options: orderOptions(ordersQuery.data ?? []) },
     { name: "proofType", label: "Tipo", type: "select" as const, options: ["PHOTO", "SIGNATURE", "QR", "CODE", "MIXED"] },
     { name: "recipientName", label: "Nombre del receptor" },
     { name: "recipientDocument", label: "Documento del receptor" },
@@ -170,4 +172,11 @@ function count(rows: Array<Record<string, string | number>>, value: string, fiel
 
 function recordArray(value: unknown): AnyRecord[] {
   return Array.isArray(value) ? value.filter((item): item is AnyRecord => Boolean(item && typeof item === "object" && !Array.isArray(item))) : [];
+}
+
+function orderOptions(orders: AnyRecord[]) {
+  return orders.map((order) => {
+    const row = mapOrderRow(order);
+    return { label: `${row.id} · ${row.cliente}`, value: String(row._id ?? row.id) };
+  });
 }

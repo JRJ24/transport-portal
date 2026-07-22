@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button, DataTable, EntityForm, Modal, PageHeader, SearchFilters, StatCard, StatusBadge } from "@/components/ui";
 import { queryKeys } from "@/lib/query-keys";
-import { mapReservationRow, tmsService } from "@/services/tms.service";
+import { mapOrderRow, mapReservationRow, tmsService } from "@/services/tms.service";
 
 const reservationFilters = [
   { label: "Estado", name: "status", options: ["ACTIVE", "RESCHUDULED", "CANCELLED", "EXPIRED", "COMPLETED"].map((value) => ({ label: value, value })) },
@@ -31,13 +31,14 @@ export function ReservationsPage() {
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const query = useMemo(() => ({ search: deferredSearch, from: weekStart, to: weekEnd, ...filters }), [deferredSearch, filters, weekEnd, weekStart]);
   const reservationsQuery = useQuery({ queryKey: queryKeys.reservations(query), queryFn: () => tmsService.reservations(query), refetchInterval: 30000 });
+  const ordersQuery = useQuery({ queryKey: ["lookup", "orders", "reservations"], queryFn: () => tmsService.orders({ serviceType: "SCHEDULED" }), enabled: open });
   const rows = useMemo(() => (reservationsQuery.data ?? []).map(mapReservationRow), [reservationsQuery.data]);
   const active = rows.filter((row) => row.estado === "ACTIVE").length;
   const pending = rows.filter((row) => row.estado === "RESCHUDULED").length;
   const completed = rows.filter((row) => row.estado === "COMPLETED").length;
   const cancelled = rows.filter((row) => row.estado === "CANCELLED").length;
   const fields = [
-    { name: "orderId", label: "ID de orden" },
+    { name: "orderId", label: "Orden", type: "select" as const, options: (ordersQuery.data ?? []).map((order) => { const row = mapOrderRow(order); return { label: `${row.id} · ${row.cliente}`, value: String(row._id ?? row.id) }; }) },
     { name: "reservedFor", label: "Fecha reservada", type: "date" as const },
   ];
   const bookings = rows.map((row) => toBooking(row, weekStart)).filter((booking) => booking.day >= 0 && booking.day < 7);

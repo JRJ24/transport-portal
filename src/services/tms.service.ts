@@ -32,6 +32,15 @@ export interface LiveLocation {
   receivedAt: string;
 }
 
+export interface HealthStatus {
+  status: 'ok' | 'degraded';
+  database: 'up' | 'down';
+  uptimeSec: number;
+  timestamp: string;
+}
+
+export type ReportFormat = 'csv' | 'xlsx' | 'pdf';
+
 const apiModules = new Set<ModuleKey>(['orders', 'drivers', 'vehicles', 'customers']);
 
 export function isApiModule(key: ModuleKey) {
@@ -41,6 +50,10 @@ export function isApiModule(key: ModuleKey) {
 export const tmsService = {
   async dashboard() {
     return getData<DashboardSummary>('/dashboard/summary');
+  },
+
+  async health() {
+    return getData<HealthStatus>('/health');
   },
 
   async listModuleRows(key: ModuleKey, query?: QueryParams): Promise<DataRow[]> {
@@ -110,6 +123,10 @@ export const tmsService = {
     return getList('/roles');
   },
 
+  vehicleCategories(query?: QueryParams) {
+    return getList('/vehicle-categories', query);
+  },
+
   createUser(values: Record<string, string>) {
     return postData('/users', {
       fullName: values.fullName,
@@ -130,6 +147,14 @@ export const tmsService = {
 
   reportsBilling(query?: QueryParams) {
     return getData<AnyRecord>('/reports/billing', query);
+  },
+
+  async exportReport(type: 'operations' | 'billing', format: ReportFormat, query?: QueryParams) {
+    const response = await api.get<Blob>(`/reports/${type}/export`, {
+      params: cleanParams({ ...query, format }),
+      responseType: 'blob',
+    });
+    return response.data;
   },
 
   async latestLocation(orderId: string) {
@@ -353,7 +378,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   const driver = asRecord(assignment?.driver);
   const driverUser = asRecord(driver?.user);
   const vehicleCategory = asRecord(order.vehicleCategory);
-  const customerName = getString(customer, 'companyName') ?? getString(customerUser, 'fullName') ?? getString(order, 'customerId') ?? '--';
+  const customerName = getString(customer, 'companyName') ?? getString(customerUser, 'fullName') ?? 'Cliente sin nombre';
   const driverName = getString(driverUser, 'fullName') ?? 'Sin asignar';
 
   return {
@@ -363,7 +388,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     origen: getString(pickup, 'addressLine') ?? getString(pickup, 'city') ?? '--',
     destino: getString(dropoff, 'addressLine') ?? getString(dropoff, 'city') ?? '--',
     servicio: getString(order, 'serviceType') ?? '--',
-    vehiculo: getString(vehicleCategory, 'name') ?? getString(order, 'vehicleCategoryId') ?? '--',
+    vehiculo: getString(vehicleCategory, 'name') ?? 'Sin categoría',
     conductor: driverName,
     estado: getString(order, 'status') ?? '--',
     eta: `${getNumber(order, 'estimatedDurationMin') ?? '--'} min`,
@@ -383,7 +408,7 @@ export function mapDriverRow(driver: AnyRecord): DataRow {
     licenseExpiration: getString(driver, 'licenseExpiration') ?? '',
     availabilityStatus: getString(driver, 'availabilityStatus') ?? '',
     verificationStatus: getString(driver, 'verificationStatus') ?? '',
-    nombre: getString(user, 'fullName') ?? getString(driver, 'userId') ?? '--',
+    nombre: getString(user, 'fullName') ?? 'Usuario no encontrado',
     licencia: getString(driver, 'licenseNumber') ?? '--',
     vencimiento: formatDate(getString(driver, 'licenseExpiration')),
     verificacion: getString(driver, 'verificationStatus') ?? '--',
@@ -406,10 +431,10 @@ export function mapVehicleRow(vehicle: AnyRecord): DataRow {
     color: getString(vehicle, 'color') ?? '',
     status: getString(vehicle, 'status') ?? '',
     placa: getString(vehicle, 'plateNumber') ?? '--',
-    tipo: getString(vehicleCategory, 'name') ?? getString(vehicle, 'categoryId') ?? '--',
+    tipo: getString(vehicleCategory, 'name') ?? 'Sin categoría',
     marca: `${getString(vehicle, 'brand') ?? ''} ${getString(vehicle, 'model') ?? ''}`.trim(),
     anio: getNumber(vehicle, 'year') ?? '--',
-    conductor: getString(vehicle, 'driverId') ?? '--',
+    conductor: getString(vehicle, 'driverId') ? 'Asignado' : 'Sin conductor',
     documentos: String(asRecordArray(vehicle.vehiclesDocuments).length),
     estado: getString(vehicle, 'status') ?? '--',
   };
@@ -576,7 +601,7 @@ async function getData<T>(endpoint: string, query?: QueryParams): Promise<T> {
 
 async function getList(endpoint: string, query?: QueryParams): Promise<AnyRecord[]> {
   const data = await getData<AnyRecord[] | { items: AnyRecord[] }>(endpoint, query);
-  return Array.isArray(data) ? data : data.items;
+  return Array.isArray(data) ? data : data.items ?? [];
 }
 
 async function postData(endpoint: string, payload: unknown) {
