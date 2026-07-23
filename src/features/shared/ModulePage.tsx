@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   ConfirmDialog,
+  Button,
   DataTable,
   Drawer,
   EntityForm,
@@ -29,6 +30,10 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [selected, setSelected] = useState<DataRow | null>(null);
   const [deleting, setDeleting] = useState<DataRow | null>(null);
+  const [assigning, setAssigning] = useState<DataRow | null>(null);
+  const [assignmentDriverId, setAssignmentDriverId] = useState("");
+  const [assignmentVehicleId, setAssignmentVehicleId] = useState("");
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
   const apiEnabled = isApiModule(config.key);
   const query = useMemo(
     () => ({ search: deferredSearch, ...filters }),
@@ -63,6 +68,28 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     queryFn: () => tmsService.drivers(),
     enabled: needsVehicleLookups,
   });
+  const assignmentDriverOptions = useQuery({
+    queryKey: ["lookup", "drivers", "assignment"],
+    queryFn: () => tmsService.drivers({ availabilityStatus: "AVAILABLE" }),
+    enabled: config.key === "orders" && Boolean(assigning),
+  });
+  const assignmentVehicleOptions = useQuery({
+    queryKey: [
+      "lookup",
+      "vehicles",
+      "assignment",
+      assignmentDriverId,
+      assigning?.vehicleCategoryId,
+    ],
+    queryFn: () =>
+      tmsService.vehicles({
+        driverId: assignmentDriverId,
+        status: "ACTIVE",
+        categoryId: String(assigning?.vehicleCategoryId ?? ""),
+      }),
+    enabled: config.key === "orders" && Boolean(assigning) && Boolean(assignmentDriverId),
+  });
+
   const rows = useMemo(
     () => (apiEnabled ? (remoteRows.data ?? []) : localRows),
     [apiEnabled, localRows, remoteRows.data],
@@ -182,6 +209,43 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     toast.success("Exportación CSV completada");
   };
 
+  const submitAssignment = async () => {
+    if (!assigning) return;
+    if (!assignmentDriverId || !assignmentVehicleId) {
+      toast.error("Selecciona conductor y vehiculo");
+      return;
+    }
+
+    setAssignmentSaving(true);
+    try {
+      await tmsService.assignOrder({
+        orderId: String(assigning._id ?? assigning.id),
+        driverId: assignmentDriverId,
+        vehicleId: assignmentVehicleId,
+      });
+      toast.success("Orden asignada al conductor");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["lookup", "drivers"] }),
+        queryClient.invalidateQueries({ queryKey: ["lookup", "vehicles"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] }),
+      ]);
+      setAssigning(null);
+      setSelected(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo asignar la orden");
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
+  const openAssignment = (row: DataRow) => {
+    setAssignmentDriverId("");
+    setAssignmentVehicleId("");
+    setAssigning(row);
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
       <PageHeader
@@ -261,7 +325,76 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
           />
         )}
       </Modal>
-      <Drawer row={modal ? null : selected} onClose={() => setSelected(null)} />
+      <Drawer
+        row={modal ? null : selected}
+        onClose={() => setSelected(null)}
+        extraActions={
+          config.key === "orders" && selected ? (
+            <Button
+              type="button"
+              onClick={() => openAssignment(selected)}
+              disabled={String(selected.conductor) !== "Sin asignar" || String(selected.estado) !== "REQUESTED"}
+            >
+              Asignar conductor
+            </Button>
+          ) : undefined
+        }
+      />
+      <Modal
+        open={Boolean(assigning)}
+        onClose={() => setAssigning(null)}
+        title={`Asignar ${assigning?.id ?? "orden"}`}
+        description="Selecciona un conductor disponible y uno de sus vehiculos activos."
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitAssignment();
+          }}
+        >
+          <div className="form-grid">
+            <label className="span-2">
+              <span>Conductor disponible</span>
+              <select
+                value={assignmentDriverId}
+                onChange={(event) => {
+                  setAssignmentDriverId(event.target.value);
+                  setAssignmentVehicleId("");
+                }}
+              >
+                <option value="">Seleccionar conductor</option>
+                {(assignmentDriverOptions.data ?? []).map((driver) => {
+                  const option = driverOption(driver);
+                  return <option key={option.value} value={option.value}>{option.label}</option>;
+                })}
+              </select>
+            </label>
+            <label className="span-2">
+              <span>Vehiculo activo</span>
+              <select
+                value={assignmentVehicleId}
+                onChange={(event) => setAssignmentVehicleId(event.target.value)}
+                disabled={!assignmentDriverId || assignmentVehicleOptions.isLoading}
+              >
+                <option value="">Seleccionar vehiculo</option>
+                {(assignmentVehicleOptions.data ?? []).map((vehicle) => {
+                  const option = vehicleOption(vehicle);
+                  return <option key={option.value} value={option.value}>{option.label}</option>;
+                })}
+              </select>
+            </label>
+          </div>
+          <div className="form-summary">
+            <span>La orden pasara a ASSIGNED y el conductor recibira la asignacion por Socket.IO.</span>
+          </div>
+          <footer className="modal-actions">
+            <Button type="button" variant="secondary" onClick={() => setAssigning(null)}>Cancelar</Button>
+            <Button type="submit" disabled={assignmentSaving || !assignmentDriverId || !assignmentVehicleId}>
+              {assignmentSaving ? "Asignando..." : "Asignar orden"}
+            </Button>
+          </footer>
+        </form>
+      </Modal>
       <ConfirmDialog
         row={deleting}
         onCancel={() => setDeleting(null)}
@@ -360,6 +493,21 @@ function driverOption(driver: AnyRecord) {
       .filter(Boolean)
       .join(" · "),
     value: String(driver.id ?? ""),
+  };
+}
+
+function vehicleOption(vehicle: AnyRecord) {
+  const category = asRecord(vehicle.vehicleCategory);
+  return {
+    label: [
+      String(vehicle.plateNumber ?? "Vehiculo"),
+      `${String(vehicle.brand ?? "")} ${String(vehicle.model ?? "")}`.trim(),
+      String(category?.name ?? ""),
+      String(vehicle.status ?? ""),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    value: String(vehicle.id ?? ""),
   };
 }
 

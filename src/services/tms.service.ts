@@ -332,6 +332,10 @@ export const tmsService = {
     });
   },
 
+  assignOrder(values: { orderId: string; driverId: string; vehicleId: string }) {
+    return postData('/assignments', values);
+  },
+
   createReservation(values: Record<string, string>) {
     return postData("/reservations", {
       orderId: values.orderId,
@@ -454,6 +458,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   return {
     id: getString(order, "orderCode") ?? getString(order, "id") ?? "--",
     _id: getString(order, "id") ?? "--",
+    vehicleCategoryId: getString(order, "vehicleCategoryId") ?? "",
     cliente: customerName,
     origen:
       getString(pickup, "addressLine") ?? getString(pickup, "city") ?? "--",

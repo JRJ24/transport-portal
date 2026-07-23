@@ -94,6 +94,17 @@ export function AppShell({
       toast.info("Nueva orden recibida en TMS");
     };
 
+    const refreshAssignments = () => {
+      setOrderPing((value) => value + 1);
+      void queryClient.invalidateQueries({
+        queryKey: ["tms-module", "orders"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["map-orders"] });
+      toast.success("Asignacion enviada al conductor");
+    };
+
     const refreshIncidents = () => {
       setIncidentPing((value) => value + 1);
       void queryClient.invalidateQueries({ queryKey: ["incidents"] });
@@ -111,6 +122,7 @@ export function AppShell({
     socket.on("disconnect", () => setSocketState("disconnected"));
     socket.on("connect_error", () => setSocketState("disconnected"));
     socket.on("order.created", refreshOrders);
+    socket.on("assignment.created", refreshAssignments);
     socket.on("order.status.changed", () => {
       void queryClient.invalidateQueries({
         queryKey: ["tms-module", "orders"],
