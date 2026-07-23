@@ -19,7 +19,7 @@
   .toolbar { align-items:stretch; flex-direction:column; }.search-field { width:100%; }.filter-row { width:100%; }
   .reports-layout { grid-template-columns:1fr; }.proof-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.calendar-toolbar { align-items:flex-start; flex-direction:column; }
   .mini-table button { grid-template-columns:90px 1fr 75px; }.mini-table button>span:nth-last-child(2),.mini-table button>b { display:none; }
-  .form-grid { grid-template-columns:1fr; }.span-2 { grid-column:auto; }.form-summary { align-items:flex-start; flex-direction:column; }
+  .form-grid,.order-form { grid-template-columns:1fr; }.span-2 { grid-column:auto; }.form-summary { align-items:flex-start; flex-direction:column; }
   .quick-actions { justify-content:flex-start; overflow-x:auto; }.quick-actions>span { display:none; }.quick-actions .button { white-space:nowrap; }
   .indicators>div:not(.panel-heading) { grid-template-columns:1fr 1fr; padding:9px 0; }.indicators em { display:none; }
 }

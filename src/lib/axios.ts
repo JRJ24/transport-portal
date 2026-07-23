@@ -18,10 +18,16 @@ const refreshTokenKey = "refreshToken";
 
 export const tokenManager = {
   get(): string | null {
-    return sessionStorage.getItem(accessTokenKey) || localStorage.getItem(accessTokenKey);
+    return (
+      sessionStorage.getItem(accessTokenKey) ||
+      localStorage.getItem(accessTokenKey)
+    );
   },
   getRefresh(): string | null {
-    return sessionStorage.getItem(refreshTokenKey) || localStorage.getItem(refreshTokenKey);
+    return (
+      sessionStorage.getItem(refreshTokenKey) ||
+      localStorage.getItem(refreshTokenKey)
+    );
   },
   set(token: string, persist: "session" | "local" = "session") {
     if (persist === "local") localStorage.setItem(accessTokenKey, token);
@@ -31,7 +37,10 @@ export const tokenManager = {
     if (persist === "local") localStorage.setItem(refreshTokenKey, token);
     else sessionStorage.setItem(refreshTokenKey, token);
   },
-  setTokens(tokens: { accessToken: string; refreshToken: string }, persist: "session" | "local" = "session") {
+  setTokens(
+    tokens: { accessToken: string; refreshToken: string },
+    persist: "session" | "local" = "session",
+  ) {
     this.set(tokens.accessToken, persist);
     this.setRefresh(tokens.refreshToken, persist);
   },

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, Download, MoreHorizontal, Search, X } from "lucide-react";
@@ -68,8 +69,7 @@ export function DataTable({ columns, rows, onView, onEdit, onDelete }: { columns
                   return <td key={column.key}>{column.type === "status" ? <StatusBadge>{value}</StatusBadge> : column.type === "money" ? `RD$ ${Number(value).toLocaleString("es-DO")}` : column.type === "strong" ? <strong>{value}</strong> : value}</td>;
                 })}
                 <td className="row-action">
-                  <button onClick={() => setMenu(menu === row.id ? null : row.id)} aria-label={`Acciones para ${row.id}`}><MoreHorizontal size={17} /></button>
-                  {menu === row.id && <div className="row-menu"><button onClick={() => { onView(row); setMenu(null); }}>Ver detalle</button><button onClick={() => { onEdit(row); setMenu(null); }}>Editar</button><button className="danger-text" onClick={() => { onDelete(row); setMenu(null); }}>Eliminar</button></div>}
+                  <TableActionsMenu row={row} open={menu === row.id} onOpenChange={(open) => setMenu(open ? row.id : null)} onView={onView} onEdit={onEdit} onDelete={onDelete} />
                 </td>
               </tr>
             ))}
@@ -80,6 +80,53 @@ export function DataTable({ columns, rows, onView, onEdit, onDelete }: { columns
       <footer className="table-footer"><span>Mostrando {rows.length} registros</span><div><button disabled>Anterior</button><button className="is-current">1</button><button>Siguiente</button></div></footer>
     </div>
   );
+}
+
+function TableActionsMenu({ row, open, onOpenChange, onView, onEdit, onDelete }: { row: DataRow; open: boolean; onOpenChange: (open: boolean) => void; onView: (row: DataRow) => void; onEdit: (row: DataRow) => void; onDelete: (row: DataRow) => void }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 150;
+    const menuHeight = 118;
+    const top = rect.bottom + 8 + menuHeight > window.innerHeight ? rect.top - menuHeight - 8 : rect.bottom + 8;
+    const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+    setPosition({ top: Math.max(8, top), left });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnPointer = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      onOpenChange(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    const closeOnResize = () => onOpenChange(false);
+    window.addEventListener("mousedown", closeOnPointer);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnResize);
+    return () => {
+      window.removeEventListener("mousedown", closeOnPointer);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnResize);
+    };
+  }, [onOpenChange, open]);
+
+  const run = (action: (row: DataRow) => void) => {
+    action(row);
+    onOpenChange(false);
+  };
+
+  return <>
+    <button ref={buttonRef} onClick={(event) => { event.stopPropagation(); onOpenChange(!open); }} aria-haspopup="menu" aria-expanded={open} aria-label={`Acciones para ${row.id}`}><MoreHorizontal size={17} /></button>
+    {open && createPortal(<div ref={menuRef} className="row-menu row-menu--portal" role="menu" style={{ position: "fixed", top: position.top, left: position.left, right: "auto", zIndex: 1000 }}><button role="menuitem" onClick={() => run(onView)}>Ver detalle</button><button role="menuitem" onClick={() => run(onEdit)}>Editar</button><button role="menuitem" className="danger-text" onClick={() => run(onDelete)}>Eliminar</button></div>, document.body)}
+  </>;
 }
 
 export function Modal({ open, onClose, title, description, children, wide = false }: { open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode; wide?: boolean }) {
