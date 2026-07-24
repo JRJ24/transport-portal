@@ -1,0 +1,34 @@
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+RUN corepack enable
+
+ARG VITE_API_URL_DEV=/api/v1
+ARG VITE_API_URL_PROD=/api/v1
+ARG VITE_API_ALT_URL_DEV=/api/v1
+ARG VITE_API_ALT_URL_PROD=/api/v1
+ARG VITE_SOCKET_URL_DEV=
+ARG VITE_SOCKET_URL_PROD=
+ARG VITE_GOOGLE_MAPS_API_KEY=
+
+ENV VITE_API_URL_DEV=${VITE_API_URL_DEV}
+ENV VITE_API_URL_PROD=${VITE_API_URL_PROD}
+ENV VITE_API_ALT_URL_DEV=${VITE_API_ALT_URL_DEV}
+ENV VITE_API_ALT_URL_PROD=${VITE_API_ALT_URL_PROD}
+ENV VITE_SOCKET_URL_DEV=${VITE_SOCKET_URL_DEV}
+ENV VITE_SOCKET_URL_PROD=${VITE_SOCKET_URL_PROD}
+ENV VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+RUN pnpm build
+
+FROM nginx:1.27-alpine AS runner
+
+COPY portal/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
