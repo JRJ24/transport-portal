@@ -35,6 +35,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const [assignmentVehicleId, setAssignmentVehicleId] = useState("");
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [paymentVerifying, setPaymentVerifying] = useState(false);
+  const [driverVerificationSaving, setDriverVerificationSaving] = useState(false);
   const apiEnabled = isApiModule(config.key);
   const query = useMemo(
     () => ({ search: deferredSearch, ...filters }),
@@ -71,7 +72,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   });
   const assignmentDriverOptions = useQuery({
     queryKey: ["lookup", "drivers", "assignment"],
-    queryFn: () => tmsService.drivers({ availabilityStatus: "AVAILABLE" }),
+    queryFn: () => tmsService.drivers({ availabilityStatus: "AVAILABLE", verificationStatus: "APPROVED" }),
     enabled: config.key === "orders" && Boolean(assigning),
   });
   const assignmentVehicleOptions = useQuery({
@@ -276,6 +277,27 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     }
   };
 
+  const updateSelectedDriverVerification = async (verificationStatus: "APPROVED" | "REJECTED") => {
+    if (!selected) return;
+
+    setDriverVerificationSaving(true);
+    try {
+      await tmsService.updateDriver({ verificationStatus }, String(selected.id));
+      toast.success(verificationStatus === "APPROVED" ? "Conductor aprobado" : "Conductor rechazado");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "drivers"] }),
+        queryClient.invalidateQueries({ queryKey: ["lookup", "drivers"] }),
+        queryClient.invalidateQueries({ queryKey: ["lookup", "vehicles"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      ]);
+      setSelected(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar la verificacion");
+    } finally {
+      setDriverVerificationSaving(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
       <PageHeader
@@ -359,7 +381,25 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
         row={modal ? null : selected}
         onClose={() => setSelected(null)}
         extraActions={
-          config.key === "orders" && selected ? (
+          config.key === "drivers" && selected && selected.verificacion === "PENDING" ? (
+            <>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => void updateSelectedDriverVerification("REJECTED")}
+                disabled={driverVerificationSaving}
+              >
+                Rechazar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void updateSelectedDriverVerification("APPROVED")}
+                disabled={driverVerificationSaving}
+              >
+                Aprobar acceso
+              </Button>
+            </>
+          ) : config.key === "orders" && selected ? (
             <>
               {selectedPaymentId ? (
                 <Button
@@ -585,6 +625,12 @@ function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
   if (key === "drivers") {
     return [
       {
+        label: "Pendientes",
+        value: String(count(rows, "PENDING")),
+        helper: "Requieren aprobacion",
+        tone: "orange",
+      },
+      {
         label: "Disponibles",
         value: String(count(rows, "AVAILABLE")),
         helper: "Listos para asignar",
@@ -595,12 +641,6 @@ function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
         value: String(count(rows, "BUSY")),
         helper: "En servicio",
         tone: "blue",
-      },
-      {
-        label: "Offline",
-        value: String(count(rows, "OFFLINE")),
-        helper: "Sin conexión",
-        tone: "orange",
       },
       {
         label: "Total",

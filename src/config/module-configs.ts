@@ -54,7 +54,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
   },
   drivers: {
-    key: "drivers", title: "Conductores", subtitle: "Disponibilidad, seguridad y desempeño", action: "Nuevo conductor",
+    key: "drivers", title: "Conductores", subtitle: "Aprobacion, disponibilidad y desempeño", action: "Nuevo conductor",
     stats: [
       { label: "Activos", value: "86", helper: "74 disponibles", tone: "green" }, { label: "En descanso", value: "14", helper: "Próximo turno 14:00", tone: "orange" },
       { label: "Incidentes", value: "2", helper: "Últimos 30 días", tone: "red" }, { label: "Calificación", value: "4.87", helper: "Promedio de flota", tone: "blue" },
