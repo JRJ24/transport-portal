@@ -44,12 +44,12 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     columns: [
       { key: "id", label: "Orden", type: "strong" }, { key: "cliente", label: "Cliente" }, { key: "origen", label: "Origen" },
       { key: "destino", label: "Destino" }, { key: "servicio", label: "Servicio" }, { key: "conductor", label: "Conductor" },
-      { key: "estado", label: "Estado", type: "status" }, { key: "eta", label: "ETA" }, { key: "precio", label: "Precio", type: "money" },
+      { key: "estado", label: "Estado", type: "status" }, { key: "estadoPago", label: "Pago", type: "status" }, { key: "eta", label: "ETA" }, { key: "precio", label: "Precio", type: "money" },
       { key: "prioridad", label: "Prioridad", type: "status" },
     ],
     rows: [], fields: commonOrderFields,
     filters: [
-      { label: "Estado", name: "status", options: ["DRAFT", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"].map((value) => ({ label: value, value })) },
+      { label: "Estado", name: "status", options: ["DRAFT", "PENDING_PAYMENT", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"].map((value) => ({ label: value, value })) },
       { label: "Servicio", name: "serviceType", options: ["INMEDIATE", "SCHEDULED"].map((value) => ({ label: value, value })) },
     ],
   },

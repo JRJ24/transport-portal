@@ -336,6 +336,14 @@ export const tmsService = {
     return postData('/assignments', values);
   },
 
+  verifyPayment(paymentId: string) {
+    return postData(`/payments/${paymentId}/verify`, {});
+  },
+
+  paymentReceipt(paymentId: string) {
+    return getData(`/payments/${paymentId}/receipt`);
+  },
+
   createReservation(values: Record<string, string>) {
     return postData("/reservations", {
       orderId: values.orderId,
@@ -449,6 +457,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   const driver = asRecord(assignment?.driver);
   const driverUser = asRecord(driver?.user);
   const vehicleCategory = asRecord(order.vehicleCategory);
+  const latestPayment = asRecordArray(order.payments)[0];
   const customerName =
     getString(customer, "companyName") ??
     getString(customerUser, "fullName") ??
@@ -468,8 +477,13 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     vehiculo: getString(vehicleCategory, "name") ?? "Sin categoría",
     conductor: driverName,
     estado: getString(order, "status") ?? "--",
+    estadoPago: getString(order, "paymentStatus") ?? "--",
     eta: `${getNumber(order, "estimatedDurationMin") ?? "--"} min`,
     precio: getNumber(order, "totalAmount") ?? 0,
+    recibo: getString(latestPayment, "providerReference") ?? "--",
+    autorizacion: getString(latestPayment, "authorizationCode") ?? "--",
+    tarjeta: getString(latestPayment, "maskedCardNumber") ?? "--",
+    paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
     prioridad: getString(order, "status") === "REQUESTED" ? "Alta" : "Normal",
   };

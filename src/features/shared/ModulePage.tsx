@@ -34,6 +34,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const [assignmentDriverId, setAssignmentDriverId] = useState("");
   const [assignmentVehicleId, setAssignmentVehicleId] = useState("");
   const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [paymentVerifying, setPaymentVerifying] = useState(false);
   const apiEnabled = isApiModule(config.key);
   const query = useMemo(
     () => ({ search: deferredSearch, ...filters }),
@@ -125,6 +126,13 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             ),
           ),
     [apiEnabled, rows, search],
+  );
+  const selectedPaymentId = selected ? String(selected.paymentId ?? "") : "";
+  const canAssignSelected = Boolean(
+    selected &&
+      String(selected.conductor) === "Sin asignar" &&
+      String(selected.estado) === "REQUESTED" &&
+      String(selected.estadoPago) === "PAID",
   );
 
   const save = async (values: Record<string, string>) => {
@@ -246,6 +254,28 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     setAssigning(row);
   };
 
+  const verifySelectedPayment = async () => {
+    if (!selectedPaymentId) {
+      toast.error("La orden no tiene un pago CardNET asociado");
+      return;
+    }
+
+    setPaymentVerifying(true);
+    try {
+      await tmsService.verifyPayment(selectedPaymentId);
+      toast.success("Pago validado contra CardNET");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] }),
+      ]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo validar el pago");
+    } finally {
+      setPaymentVerifying(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
       <PageHeader
@@ -330,13 +360,25 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
         onClose={() => setSelected(null)}
         extraActions={
           config.key === "orders" && selected ? (
-            <Button
-              type="button"
-              onClick={() => openAssignment(selected)}
-              disabled={String(selected.conductor) !== "Sin asignar" || String(selected.estado) !== "REQUESTED"}
-            >
-              Asignar conductor
-            </Button>
+            <>
+              {selectedPaymentId ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void verifySelectedPayment()}
+                  disabled={paymentVerifying}
+                >
+                  {paymentVerifying ? "Validando..." : "Validar pago"}
+                </Button>
+              ) : undefined}
+              <Button
+                type="button"
+                onClick={() => openAssignment(selected)}
+                disabled={!canAssignSelected}
+              >
+                Asignar conductor
+              </Button>
+            </>
           ) : undefined
         }
       />
@@ -385,7 +427,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             </label>
           </div>
           <div className="form-summary">
-            <span>La orden pasara a ASSIGNED y el conductor recibira la asignacion por Socket.IO.</span>
+            <span>La orden debe estar pagada. Pasara a ASSIGNED y el conductor recibira la asignacion por Socket.IO.</span>
           </div>
           <footer className="modal-actions">
             <Button type="button" variant="secondary" onClick={() => setAssigning(null)}>Cancelar</Button>
