@@ -132,20 +132,28 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const canAssignSelected = Boolean(
     selected &&
       String(selected.conductor) === "Sin asignar" &&
-      String(selected.estado) === "REQUESTED" &&
+      String(selected.estadoInterno) === "REQUESTED" &&
       String(selected.estadoPago) === "PAID",
   );
 
   const save = async (values: Record<string, string>) => {
     if (apiEnabled) {
       try {
-        if (config.key === "orders" && modal !== "edit") {
-          await tmsService.createTmsOrder(values);
-          toast.success(
-            values.submitMode === "CREATE_AND_QUOTE"
-              ? "Orden creada con cotización provisional"
-              : "Orden guardada como borrador",
-          );
+        if (config.key === "orders") {
+          if (modal === "edit" && selected) {
+            await tmsService.updateOrderStatus(
+              String(selected._id ?? selected.id),
+              values.estadoInterno,
+            );
+            toast.success("Estado de orden actualizado");
+          } else {
+            await tmsService.createTmsOrder(values);
+            toast.success(
+              values.submitMode === "CREATE_AND_QUOTE"
+                ? "Orden creada con cotización provisional"
+                : "Orden guardada como borrador",
+            );
+          }
         } else if (config.key === "drivers") {
           if (modal === "edit" && selected)
             await tmsService.updateDriver(values, String(selected.id));
@@ -156,6 +164,11 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             await tmsService.updateVehicle(values, String(selected.id));
           else await tmsService.createVehicle(values);
           toast.success("Vehículo sincronizado con transport-api");
+        } else if (config.key === "customers") {
+          if (modal === "edit" && selected)
+            await tmsService.updateTmsCustomer(values, String(selected.id));
+          else await tmsService.createTmsCustomer(values);
+          toast.success("Cliente sincronizado con transport-api");
         } else {
           toast.info(
             "Este módulo usa datos de API; la creación se gestiona desde onboarding/configuración.",
@@ -364,7 +377,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
         ) : (
           <EntityForm
             key={`${modal}-${selected?.id ?? "new"}`}
-            fields={fields}
+            fields={config.key === "orders" && modal === "edit" ? fields.filter((field) => field.name === "estadoInterno") : fields}
             initial={modal === "edit" ? (selected ?? undefined) : undefined}
             submitLabel={
               modal === "edit" ? "Guardar cambios" : "Crear registro"
@@ -378,6 +391,8 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
         )}
       </Modal>
       <Drawer
+        entityId={selected ? String(selected._id ?? selected.id) : undefined}
+        entityType={entityTypeFor(config.key)}
         row={modal ? null : selected}
         onClose={() => setSelected(null)}
         extraActions={
@@ -486,12 +501,20 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
               current.filter((row) => row.id !== deleting.id),
             );
             toast.success(`${deleting.id} fue eliminado`);
-          } else {
-            toast.info(
-              "La eliminación requiere endpoint explícito en transport-api.",
-            );
+            setDeleting(null);
+            return;
           }
-          setDeleting(null);
+
+          if (!deleting) return;
+
+          tmsService
+            .deleteModuleRow(config.key, deleting)
+            .then(() => queryClient.invalidateQueries({ queryKey: ["tms-module", config.key] }))
+            .then(() => toast.success(`${deleting.id} fue desactivado`))
+            .catch((error: unknown) =>
+              toast.error(error instanceof Error ? error.message : "No se pudo desactivar"),
+            )
+            .finally(() => setDeleting(null));
         }}
       />
     </motion.div>
@@ -598,25 +621,25 @@ function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
     return [
       {
         label: "Solicitadas",
-        value: String(count(rows, "REQUESTED")),
+        value: String(count(rows, "REQUESTED", "estadoInterno")),
         helper: "Pendientes de despacho",
         tone: "blue",
       },
       {
         label: "Asignadas",
-        value: String(count(rows, "ASSIGNED") + count(rows, "ACCEPTED")),
+        value: String(count(rows, "ASSIGNED", "estadoInterno") + count(rows, "ACCEPTED", "estadoInterno")),
         helper: "Con conductor",
         tone: "slate",
       },
       {
         label: "En ruta",
-        value: String(count(rows, "IN_PROGRESS")),
+        value: String(count(rows, "IN_PROGRESS", "estadoInterno")),
         helper: "Tracking activo",
         tone: "green",
       },
       {
         label: "Incidencia",
-        value: String(count(rows, "FAILED") + count(rows, "CANCELLED")),
+        value: String(count(rows, "FAILED", "estadoInterno") + count(rows, "CANCELLED", "estadoInterno")),
         helper: "Canceladas o fallidas",
         tone: "red",
       },
@@ -734,4 +757,19 @@ function displayName(row: DataRow | null) {
       row.usuario ??
       row.id,
   );
+}
+
+function entityTypeFor(key: ModuleConfig["key"]) {
+  switch (key) {
+    case "orders":
+      return "ORDER";
+    case "drivers":
+      return "DRIVER";
+    case "vehicles":
+      return "VEHICLE";
+    case "customers":
+      return "CUSTOMER";
+    default:
+      return key.toUpperCase();
+  }
 }

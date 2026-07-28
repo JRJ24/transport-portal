@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, Download, MoreHorizontal, Search, X } from "lucide-react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
+import { tmsService } from "@/services/tms.service";
 import type { Column, DataRow, FilterConfig, FormField, Stat, Tone } from "@/types/domain";
 
 export function Button({ children, variant = "primary", className = "", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
@@ -143,7 +145,7 @@ type FormValues = Record<string, string>;
 export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit, onCancel }: { fields: FormField[]; initial?: DataRow; submitLabel?: string; onSubmit: (values: FormValues) => void; onCancel: () => void }) {
   const shape = useMemo(() => Object.fromEntries(fields.map((field) => {
     const base = field.type === "email" ? z.string().email("Correo inválido") : z.string();
-    return [field.name, field.required === false ? base.optional() : base.min(1, "Este campo es requerido")];
+    return [field.name, field.required === false ? z.union([base, z.literal("")]).optional() : base.min(1, "Este campo es requerido")];
   })), [fields]);
   const schema = useMemo(() => z.object(shape), [shape]);
   const defaults = useMemo(() => Object.fromEntries(fields.map((field) => [field.name, String(initial?.[field.name] ?? "")])), [fields, initial]);
@@ -159,8 +161,32 @@ export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit,
   );
 }
 
-export function Drawer({ extraActions, row, onClose }: { extraActions?: ReactNode; row: DataRow | null; onClose: () => void }) {
-  return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{displayName(row)}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className="active">General</button><button>Actividad</button><button>Documentos</button><button>Auditoría</button></nav><div className="drawer-body">{Object.entries(row).filter(([key]) => !isInternalField(key)).map(([key, value]) => <div className="detail-field" key={key}><span>{key.replace(/_/g, " ")}</span><strong>{String(value)}</strong></div>)}</div><footer><Button variant="secondary">Ver historial</Button>{extraActions}<Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
+type DrawerTab = "general" | "activity" | "documents" | "audit";
+
+export function Drawer({ entityId, entityType, extraActions, row, onClose }: { entityId?: string; entityType?: string; extraActions?: ReactNode; row: DataRow | null; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<DrawerTab>("general");
+  const enabled = Boolean(row && entityId && entityType);
+  const activityQuery = useQuery({
+    queryKey: ["drawer", "activity", entityType, entityId],
+    queryFn: () => entityType === "ORDER" ? tmsService.orderEvents(entityId ?? "") : tmsService.auditLogs(entityType ?? "", entityId ?? ""),
+    enabled: enabled && activeTab === "activity",
+  });
+  const documentsQuery = useQuery({
+    queryKey: ["drawer", "documents", entityType, entityId],
+    queryFn: () => tmsService.attachments(entityType ?? "", entityId ?? ""),
+    enabled: enabled && activeTab === "documents",
+  });
+  const auditQuery = useQuery({
+    queryKey: ["drawer", "audit", entityType, entityId],
+    queryFn: () => tmsService.auditLogs(entityType ?? "", entityId ?? ""),
+    enabled: enabled && activeTab === "audit",
+  });
+
+  useEffect(() => {
+    setActiveTab("general");
+  }, [row?.id]);
+
+  return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{displayName(row)}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className={activeTab === "general" ? "active" : ""} onClick={() => setActiveTab("general")}>General</button><button className={activeTab === "activity" ? "active" : ""} onClick={() => setActiveTab("activity")}>Actividad</button><button className={activeTab === "documents" ? "active" : ""} onClick={() => setActiveTab("documents")}>Documentos</button><button className={activeTab === "audit" ? "active" : ""} onClick={() => setActiveTab("audit")}>Auditoría</button></nav><div className="drawer-body">{activeTab === "general" ? <GeneralTab row={row} /> : activeTab === "activity" ? <RemoteTab empty="Sin actividad registrada" loading={activityQuery.isLoading} rows={recordArray(activityQuery.data)} /> : activeTab === "documents" ? <RemoteTab empty="Sin documentos adjuntos" loading={documentsQuery.isLoading} rows={recordArray(documentsQuery.data)} /> : <RemoteTab empty="Sin auditoría registrada" loading={auditQuery.isLoading} rows={recordArray(auditQuery.data)} />}</div><footer><Button variant="secondary" onClick={() => setActiveTab("activity")}>Ver historial</Button>{extraActions}<Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
 }
 
 export function ConfirmDialog({ row, onCancel, onConfirm }: { row: DataRow | null; onCancel: () => void; onConfirm: () => void }) {
@@ -171,8 +197,34 @@ function normalizeOption(option: string | { label: string; value: string }) {
   return typeof option === "string" ? { label: option, value: option } : option;
 }
 
+function GeneralTab({ row }: { row: DataRow }) {
+  return <>{Object.entries(row).filter(([key]) => !isInternalField(key)).map(([key, value]) => <div className="detail-field" key={key}><span>{key.replace(/_/g, " ")}</span><strong>{String(value)}</strong></div>)}</>;
+}
+
+function RemoteTab({ empty, loading, rows }: { empty: string; loading: boolean; rows: Array<Record<string, unknown>> }) {
+  if (loading) {
+    return <div className="detail-field"><span>Cargando</span><strong>Sincronizando API...</strong></div>;
+  }
+  if (!rows.length) {
+    return <div className="detail-field"><span>Resultado</span><strong>{empty}</strong></div>;
+  }
+
+  return <>{rows.map((row, index) => <div className="detail-field" key={String(row.id ?? index)}><span>{String(row.action ?? row.eventType ?? row.fileName ?? row.createdAt ?? `Registro ${index + 1}`)}</span><strong>{summarizeRecord(row)}</strong></div>)}</>;
+}
+
+function recordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    : [];
+}
+
+function summarizeRecord(row: Record<string, unknown>) {
+  const value = row.description ?? row.message ?? row.entityType ?? row.mimeType ?? row.status ?? row.createdAt ?? row.id;
+  return typeof value === "string" || typeof value === "number" ? String(value) : JSON.stringify(value ?? row);
+}
+
 function isInternalField(key: string) {
-  return key === "_id" || key === "entityId" || /(^|_)\w*Id$/.test(key);
+  return key === "_id" || key === "entityId" || key === "estadoInterno" || /(^|_)\w*Id$/.test(key);
 }
 
 function displayName(row: DataRow) {

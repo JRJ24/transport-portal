@@ -18,6 +18,7 @@ import {
   mapReservationRow,
   tmsService,
 } from "@/services/tms.service";
+import type { DataRow } from "@/types/domain";
 
 const reservationFilters = [
   {
@@ -41,6 +42,7 @@ const columns = [
 export function ReservationsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<DataRow | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -102,14 +104,29 @@ export function ReservationsPage() {
 
   const save = async (values: Record<string, string>) => {
     try {
-      await tmsService.createReservation(values);
+      if (editing) {
+        await tmsService.rescheduleReservation(String(editing.id), values.reservedFor);
+      } else {
+        await tmsService.createReservation(values);
+      }
       await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      toast.success("Reserva creada en transport-api");
+      toast.success(editing ? "Reserva reprogramada en transport-api" : "Reserva creada en transport-api");
       setOpen(false);
+      setEditing(null);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "No se pudo crear la reserva",
+        error instanceof Error ? error.message : "No se pudo guardar la reserva",
       );
+    }
+  };
+
+  const cancelReservation = async (id: string) => {
+    try {
+      await tmsService.cancelReservation(id);
+      await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      toast.success("Reserva cancelada en transport-api");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cancelar la reserva");
     }
   };
 
@@ -119,7 +136,10 @@ export function ReservationsPage() {
         title="Reservas"
         subtitle="Capacidad planificada contra demanda"
         action="Crear reserva"
-        onAction={() => setOpen(true)}
+        onAction={() => {
+          setEditing(null);
+          setOpen(true);
+        }}
       />
       {reservationsQuery.isError && (
         <div className="inline-alert">
@@ -247,30 +267,29 @@ export function ReservationsPage() {
           columns={columns}
           rows={rows}
           onView={() => undefined}
-          onEdit={() =>
-            toast.info(
-              "Usa acciones de API de reprogramación/cancelación en el detalle operativo.",
-            )
-          }
-          onDelete={() =>
-            toast.info(
-              "Cancela reservas desde acción explícita para mantener auditoría.",
-            )
-          }
+          onEdit={(row) => {
+            setEditing({ ...row, reservedFor: String(row.reservedFor).slice(0, 10) });
+            setOpen(true);
+          }}
+          onDelete={(row) => void cancelReservation(String(row.id))}
         />
       </div>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Crear reserva"
-        description="Bloquea capacidad para una orden y fecha específicas."
+        title={editing ? "Reprogramar reserva" : "Crear reserva"}
+        description={editing ? "Actualiza la fecha reservada." : "Bloquea capacidad para una orden y fecha específicas."}
         wide
       >
         <EntityForm
           fields={fields}
-          onCancel={() => setOpen(false)}
+          initial={editing ?? undefined}
+          onCancel={() => {
+            setOpen(false);
+            setEditing(null);
+          }}
           onSubmit={save}
-          submitLabel="Crear reserva"
+          submitLabel={editing ? "Reprogramar" : "Crear reserva"}
         />
       </Modal>
     </div>

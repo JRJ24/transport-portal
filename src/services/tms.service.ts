@@ -166,6 +166,19 @@ export const tmsService = {
     });
   },
 
+  updateTmsCustomer(values: Record<string, string>, id: string) {
+    return patchData(`/customers/${id}/tms`, {
+      fullName: optionalString(values.fullName),
+      email: optionalString(values.email),
+      phone: optionalString(values.phone),
+      customerType: optionalString(values.customerType),
+      documentType: optionalString(values.documentType),
+      documentNumber: optionalString(values.documentNumber),
+      companyName: optionalString(values.companyName),
+      billingEmail: optionalString(values.billingEmail),
+    });
+  },
+
   createUser(values: Record<string, string>) {
     return postData("/users", {
       fullName: values.fullName,
@@ -275,6 +288,10 @@ export const tmsService = {
     return postData("/orders/tms", payload);
   },
 
+  updateOrderStatus(id: string, status: string) {
+    return patchData(`/orders/${id}/status`, { status });
+  },
+
   createDriver(values: Record<string, string>) {
     return postData("/drivers", {
       userId: values.userId,
@@ -286,24 +303,15 @@ export const tmsService = {
   },
 
   updateDriver(values: Record<string, string>, id: string) {
-    const status = optionalString(values.availabilityStatus ?? values.estado);
-    const verification = optionalString(values.verificationStatus);
-    const requests: Promise<unknown>[] = [];
-
-    if (status) {
-      requests.push(
-        patchData(`/drivers/${id}/status`, { availabilityStatus: status }),
-      );
-    }
-    if (verification) {
-      requests.push(
-        patchData(`/drivers/${id}/verification`, {
-          verificationStatus: verification,
-        }),
-      );
-    }
-
-    return Promise.all(requests);
+    return patchData(`/drivers/${id}`, {
+      userId: optionalString(values.userId),
+      licenseNumber: optionalString(values.licenseNumber ?? values.licencia),
+      licenseExpiration: values.licenseExpiration
+        ? toIso(values.licenseExpiration)
+        : undefined,
+      availabilityStatus: optionalString(values.availabilityStatus ?? values.estadoInterno),
+      verificationStatus: optionalString(values.verificationStatus),
+    });
   },
 
   createVehicle(values: Record<string, string>) {
@@ -363,6 +371,38 @@ export const tmsService = {
 
   completeReservation(id: string) {
     return patchData(`/reservations/${id}/complete`, {});
+  },
+
+  deleteModuleRow(key: ModuleKey, row: DataRow) {
+    const id = String(row._id ?? row.id);
+
+    switch (key) {
+      case "orders":
+        return postData(`/orders/${id}/cancel`, {
+          cancellationType: "ADMIN_CANCELLED",
+          reason: "Eliminado desde portal TMS",
+        });
+      case "drivers":
+        return deleteData(`/drivers/${id}`);
+      case "vehicles":
+        return deleteData(`/vehicles/${id}`);
+      case "customers":
+        return deleteData(`/customers/${id}`);
+      default:
+        throw new Error("Este modulo no tiene soft delete configurado");
+    }
+  },
+
+  orderEvents(orderId: string) {
+    return getList(`/orders/${orderId}/events`);
+  },
+
+  attachments(entityType: string, entityId: string) {
+    return getList("/attachments", { entityType, entityId });
+  },
+
+  auditLogs(entityType: string, entityId: string) {
+    return getList("/audit", { entityType, entityId });
   },
 
   createRateCard(values: Record<string, string>) {
@@ -458,6 +498,8 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   const driverUser = asRecord(driver?.user);
   const vehicleCategory = asRecord(order.vehicleCategory);
   const latestPayment = asRecordArray(order.payments)[0];
+  const orderStatus = getString(order, "status") ?? "--";
+  const paymentStatus = getString(order, "paymentStatus") ?? "--";
   const customerName =
     getString(customer, "companyName") ??
     getString(customerUser, "fullName") ??
@@ -476,8 +518,9 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     servicio: getString(order, "serviceType") ?? "--",
     vehiculo: getString(vehicleCategory, "name") ?? "Sin categoría",
     conductor: driverName,
-    estado: getString(order, "status") ?? "--",
-    estadoPago: getString(order, "paymentStatus") ?? "--",
+    estado: orderStatusLabel(orderStatus),
+    estadoInterno: orderStatus,
+    estadoPago: paymentStatus,
     eta: `${getNumber(order, "estimatedDurationMin") ?? "--"} min`,
     precio: getNumber(order, "totalAmount") ?? 0,
     recibo: getString(latestPayment, "providerReference") ?? "--",
@@ -485,7 +528,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     tarjeta: getString(latestPayment, "maskedCardNumber") ?? "--",
     paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
-    prioridad: getString(order, "status") === "REQUESTED" ? "Alta" : "Normal",
+    prioridad: orderStatus === "PENDING_QUOTE" || orderStatus === "REQUESTED" ? "Alta" : "Normal",
   };
 }
 
@@ -496,7 +539,7 @@ export function mapDriverRow(driver: AnyRecord): DataRow {
     id: getString(driver, "id") ?? "--",
     userId: getString(driver, "userId") ?? "",
     licenseNumber: getString(driver, "licenseNumber") ?? "",
-    licenseExpiration: getString(driver, "licenseExpiration") ?? "",
+    licenseExpiration: dateInputValue(getString(driver, "licenseExpiration")),
     availabilityStatus: getString(driver, "availabilityStatus") ?? "",
     verificationStatus: getString(driver, "verificationStatus") ?? "",
     nombre: getString(user, "fullName") ?? "Usuario no encontrado",
@@ -538,6 +581,14 @@ export function mapCustomerRow(customer: AnyRecord): DataRow {
 
   return {
     id: getString(customer, "id") ?? "--",
+    fullName: getString(user, "fullName") ?? "",
+    email: getString(user, "email") ?? "",
+    phone: getString(user, "phone") ?? "",
+    customerType: getString(customer, "customerType") ?? "",
+    documentType: getString(customer, "documentType") ?? "",
+    documentNumber: getString(customer, "documentNumber") ?? "",
+    companyName: getString(customer, "companyName") ?? "",
+    billingEmail: getString(customer, "billingEmail") ?? "",
     cliente:
       getString(customer, "companyName") ??
       getString(user, "fullName") ??
@@ -549,6 +600,34 @@ export function mapCustomerRow(customer: AnyRecord): DataRow {
     cobro: getString(customer, "billingEmail") ? "OK" : "Pendiente",
     estado: getString(user, "status") ?? "ACTIVE",
   };
+}
+
+function orderStatusLabel(status: string) {
+  if (["DRAFT", "PENDING_QUOTE", "PENDING_CUSTOMER_CONFIRMATION"].includes(status)) {
+    return "Pendiente";
+  }
+  if (["PENDING_PAYMENT", "CONFIRMED"].includes(status)) {
+    return "Aceptada";
+  }
+  if (["REQUESTED", "ASSIGNING_DRIVER"].includes(status)) {
+    return "Pagada";
+  }
+  if (["ASSIGNED", "ACCEPTED"].includes(status)) {
+    return "Conductor asignado";
+  }
+  if (status === "IN_PROGRESS") {
+    return "En camino";
+  }
+  if (status === "DELIVERED") {
+    return "Entregado";
+  }
+  if (status === "CANCELLED") {
+    return "Cancelada";
+  }
+  if (status === "FAILED") {
+    return "Fallida";
+  }
+  return status;
 }
 
 export function mapReservationRow(reservation: AnyRecord): DataRow {
@@ -747,6 +826,11 @@ async function patchData(endpoint: string, payload: unknown) {
   return unwrapApiResponse(response.data);
 }
 
+async function deleteData(endpoint: string) {
+  const response = await api.delete<ApiResponse<AnyRecord>>(endpoint);
+  return unwrapApiResponse(response.data);
+}
+
 function cleanParams(query?: QueryParams) {
   if (!query) {
     return undefined;
@@ -818,6 +902,10 @@ function formatDate(value: string | undefined) {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function dateInputValue(value: string | undefined) {
+  return value ? value.slice(0, 10) : "";
 }
 
 function formatDateTime(value: string | undefined) {

@@ -1,6 +1,7 @@
 import type { ModuleConfig } from "@/types/domain";
 
 const commonOrderFields = [
+  { name: "estadoInterno", label: "Estado", type: "select" as const, options: ["DRAFT", "PENDING_QUOTE", "PENDING_CUSTOMER_CONFIRMATION", "PENDING_PAYMENT", "CONFIRMED", "ASSIGNING_DRIVER", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"] },
   { name: "customerId", label: "Cliente", type: "select" as const, options: [] },
   { name: "vehicleCategoryId", label: "Categoría de vehículo", type: "select" as const, options: [] },
   { name: "serviceType", label: "Tipo de servicio", type: "select" as const, options: ["INMEDIATE", "SCHEDULED"] },
@@ -49,7 +50,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     rows: [], fields: commonOrderFields,
     filters: [
-      { label: "Estado", name: "status", options: ["DRAFT", "PENDING_PAYMENT", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"].map((value) => ({ label: value, value })) },
+      { label: "Estado", name: "status", options: ["DRAFT", "PENDING_QUOTE", "PENDING_CUSTOMER_CONFIRMATION", "PENDING_PAYMENT", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"].map((value) => ({ label: value, value })) },
       { label: "Servicio", name: "serviceType", options: ["INMEDIATE", "SCHEDULED"].map((value) => ({ label: value, value })) },
     ],
   },
@@ -110,9 +111,14 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
       { label: "Estado", name: "status", options: ["ACTIVE", "INACTIVE", "BLOCKED"].map((value) => ({ label: value, value })) },
     ],
     fields: [
-      { name: "cliente", label: "Nombre o razón social" }, { name: "tipo", label: "Tipo", type: "select", options: ["Individual", "Empresa"] },
-      { name: "documento", label: "Cédula / RNC" }, { name: "email", label: "Correo de facturación", type: "email" }, { name: "telefono", label: "Teléfono" },
-      { name: "direccion", label: "Dirección principal", type: "textarea" },
+      { name: "fullName", label: "Nombre completo" },
+      { name: "email", label: "Correo", type: "email" },
+      { name: "phone", label: "Teléfono" },
+      { name: "customerType", label: "Tipo", type: "select", options: ["INDIVIDUAL", "BUSINESS"] },
+      { name: "documentType", label: "Documento", type: "select", options: ["ID", "RNC", "PASSPORT"] },
+      { name: "documentNumber", label: "Número documento" },
+      { name: "companyName", label: "Empresa", required: false },
+      { name: "billingEmail", label: "Correo facturación", type: "email", required: false },
     ],
   },
 };
