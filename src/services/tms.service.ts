@@ -352,6 +352,25 @@ export const tmsService = {
     return getData(`/payments/${paymentId}/receipt`);
   },
 
+  registerCheckPayment(values: {
+    orderId: string;
+    bankName: string;
+    checkNumber: string;
+    amount?: number;
+    notes?: string;
+  }) {
+    return postData("/payments/checks", values);
+  },
+
+  updateCustomerCredit(id: string, values: {
+    creditLimit: number;
+    creditDays?: number;
+    status?: string;
+    notes?: string;
+  }) {
+    return patchData(`/customers/${id}/credit`, values);
+  },
+
   createReservation(values: Record<string, string>) {
     return postData("/reservations", {
       orderId: values.orderId,
@@ -526,6 +545,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     recibo: getString(latestPayment, "providerReference") ?? "--",
     autorizacion: getString(latestPayment, "authorizationCode") ?? "--",
     tarjeta: getString(latestPayment, "maskedCardNumber") ?? "--",
+    metodoPago: getString(latestPayment, "paymentMethod") ?? "--",
     paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
     prioridad: orderStatus === "PENDING_QUOTE" || orderStatus === "REQUESTED" ? "Alta" : "Normal",
@@ -578,6 +598,11 @@ export function mapVehicleRow(vehicle: AnyRecord): DataRow {
 export function mapCustomerRow(customer: AnyRecord): DataRow {
   const user = asRecord(customer.user);
   const orders = asRecordArray(customer.transportOrders);
+  const credit = asRecord(customer.creditAccount);
+  const creditLimit = getNumber(credit, "creditLimit") ?? 0;
+  const creditUsed = getNumber(credit, "balanceUsed") ?? 0;
+  const creditAvailable = Math.max(0, creditLimit - creditUsed);
+  const creditStatus = getString(credit, "status") ?? "Sin credito";
 
   return {
     id: getString(customer, "id") ?? "--",
@@ -589,6 +614,12 @@ export function mapCustomerRow(customer: AnyRecord): DataRow {
     documentNumber: getString(customer, "documentNumber") ?? "",
     companyName: getString(customer, "companyName") ?? "",
     billingEmail: getString(customer, "billingEmail") ?? "",
+    creditLimit,
+    creditUsed,
+    creditAvailable,
+    creditDays: getNumber(credit, "creditDays") ?? 15,
+    creditStatus,
+    creditNotes: getString(credit, "notes") ?? "",
     cliente:
       getString(customer, "companyName") ??
       getString(user, "fullName") ??
@@ -597,7 +628,7 @@ export function mapCustomerRow(customer: AnyRecord): DataRow {
     tipo: getString(customer, "customerType") ?? "--",
     documento: getString(customer, "documentNumber") ?? "--",
     volumen: String(orders.length || "--"),
-    cobro: getString(customer, "billingEmail") ? "OK" : "Pendiente",
+    cobro: creditStatus,
     estado: getString(user, "status") ?? "ACTIVE",
   };
 }

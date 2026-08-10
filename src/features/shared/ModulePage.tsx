@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -36,6 +36,12 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [driverVerificationSaving, setDriverVerificationSaving] = useState(false);
+  const [checkRegistering, setCheckRegistering] = useState<DataRow | null>(null);
+  const [checkSaving, setCheckSaving] = useState(false);
+  const [checkValues, setCheckValues] = useState({ bankName: "", checkNumber: "", amount: "", notes: "" });
+  const [creditEditing, setCreditEditing] = useState<DataRow | null>(null);
+  const [creditSaving, setCreditSaving] = useState(false);
+  const [creditValues, setCreditValues] = useState({ creditLimit: "", creditDays: "15", status: "ACTIVE", notes: "" });
   const apiEnabled = isApiModule(config.key);
   const query = useMemo(
     () => ({ search: deferredSearch, ...filters }),
@@ -129,11 +135,18 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     [apiEnabled, rows, search],
   );
   const selectedPaymentId = selected ? String(selected.paymentId ?? "") : "";
+  const selectedPaymentStatus = selected ? String(selected.estadoPago ?? "") : "";
   const canAssignSelected = Boolean(
     selected &&
       String(selected.conductor) === "Sin asignar" &&
       String(selected.estadoInterno) === "REQUESTED" &&
-      String(selected.estadoPago) === "PAID",
+      ["PAID", "AUTHORIZED"].includes(selectedPaymentStatus),
+  );
+  const canRegisterCheckSelected = Boolean(
+    selected &&
+      config.key === "orders" &&
+      !["PAID", "AUTHORIZED"].includes(selectedPaymentStatus) &&
+      Number(selected.precio) > 0,
   );
 
   const save = async (values: Record<string, string>) => {
@@ -266,6 +279,103 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     setAssignmentDriverId("");
     setAssignmentVehicleId("");
     setAssigning(row);
+  };
+
+  const openCheckRegistration = (row: DataRow) => {
+    setCheckValues({
+      bankName: "",
+      checkNumber: "",
+      amount: String(row.precio ?? ""),
+      notes: "",
+    });
+    setCheckRegistering(row);
+  };
+
+  const submitCheckRegistration = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!checkRegistering) return;
+
+    const amount = checkValues.amount ? Number(checkValues.amount) : undefined;
+    if (!checkValues.bankName.trim() || !checkValues.checkNumber.trim()) {
+      toast.error("Indica banco y numero de cheque");
+      return;
+    }
+    if (amount !== undefined && (!Number.isFinite(amount) || amount < 0)) {
+      toast.error("Indica un monto valido");
+      return;
+    }
+
+    setCheckSaving(true);
+    try {
+      await tmsService.registerCheckPayment({
+        orderId: String(checkRegistering._id ?? checkRegistering.id),
+        bankName: checkValues.bankName.trim(),
+        checkNumber: checkValues.checkNumber.trim(),
+        amount,
+        notes: checkValues.notes.trim() || undefined,
+      });
+      toast.success("Cheque registrado y despacho autorizado");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] }),
+      ]);
+      setCheckRegistering(null);
+      setSelected(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo registrar el cheque");
+    } finally {
+      setCheckSaving(false);
+    }
+  };
+
+  const openCreditEditor = (row: DataRow) => {
+    const currentStatus = String(row.creditStatus ?? "ACTIVE");
+    setCreditValues({
+      creditLimit: String(row.creditLimit ?? ""),
+      creditDays: String(row.creditDays ?? "15"),
+      status: ["ACTIVE", "PENDING", "BLOCKED"].includes(currentStatus) ? currentStatus : "ACTIVE",
+      notes: String(row.creditNotes ?? ""),
+    });
+    setCreditEditing(row);
+  };
+
+  const submitCreditEditor = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!creditEditing) return;
+
+    const creditLimit = Number(creditValues.creditLimit);
+    const creditDays = Number(creditValues.creditDays);
+    if (!Number.isFinite(creditLimit) || creditLimit < 0) {
+      toast.error("Indica un limite de credito valido");
+      return;
+    }
+    if (!Number.isFinite(creditDays) || creditDays < 1) {
+      toast.error("Indica dias de credito validos");
+      return;
+    }
+
+    setCreditSaving(true);
+    try {
+      await tmsService.updateCustomerCredit(String(creditEditing.id), {
+        creditLimit,
+        creditDays: Math.round(creditDays),
+        status: creditValues.status,
+        notes: creditValues.notes.trim() || undefined,
+      });
+      toast.success("Credito corporativo actualizado");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["lookup", "customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      ]);
+      setCreditEditing(null);
+      setSelected(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el credito");
+    } finally {
+      setCreditSaving(false);
+    }
   };
 
   const verifySelectedPayment = async () => {
@@ -426,6 +536,15 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                   {paymentVerifying ? "Validando..." : "Validar pago"}
                 </Button>
               ) : undefined}
+              {canRegisterCheckSelected ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openCheckRegistration(selected)}
+                >
+                  Registrar cheque
+                </Button>
+              ) : undefined}
               <Button
                 type="button"
                 onClick={() => openAssignment(selected)}
@@ -434,6 +553,14 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                 Asignar conductor
               </Button>
             </>
+          ) : config.key === "customers" && selected ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => openCreditEditor(selected)}
+            >
+              Credito corporativo
+            </Button>
           ) : undefined
         }
       />
@@ -482,13 +609,79 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             </label>
           </div>
           <div className="form-summary">
-            <span>La orden debe estar pagada. Pasara a ASSIGNED y el conductor recibira la asignacion por Socket.IO.</span>
+            <span>La orden debe estar pagada o autorizada. Pasara a ASSIGNED y el conductor recibira la asignacion por Socket.IO.</span>
           </div>
           <footer className="modal-actions">
             <Button type="button" variant="secondary" onClick={() => setAssigning(null)}>Cancelar</Button>
             <Button type="submit" disabled={assignmentSaving || !assignmentDriverId || !assignmentVehicleId}>
               {assignmentSaving ? "Asignando..." : "Asignar orden"}
             </Button>
+          </footer>
+        </form>
+      </Modal>
+      <Modal
+        open={Boolean(checkRegistering)}
+        onClose={() => setCheckRegistering(null)}
+        title={`Registrar cheque ${checkRegistering?.id ?? ""}`}
+        description="El cheque recibido autoriza el despacho sin exponerlo al cliente final."
+      >
+        <form onSubmit={submitCheckRegistration}>
+          <div className="form-grid">
+            <label>
+              <span>Banco</span>
+              <input value={checkValues.bankName} onChange={(event) => setCheckValues((current) => ({ ...current, bankName: event.target.value }))} />
+            </label>
+            <label>
+              <span>Numero de cheque</span>
+              <input value={checkValues.checkNumber} onChange={(event) => setCheckValues((current) => ({ ...current, checkNumber: event.target.value }))} />
+            </label>
+            <label className="span-2">
+              <span>Monto</span>
+              <input min="0" type="number" value={checkValues.amount} onChange={(event) => setCheckValues((current) => ({ ...current, amount: event.target.value }))} />
+            </label>
+            <label className="span-2">
+              <span>Notas</span>
+              <textarea rows={3} value={checkValues.notes} onChange={(event) => setCheckValues((current) => ({ ...current, notes: event.target.value }))} />
+            </label>
+          </div>
+          <footer className="modal-actions">
+            <Button type="button" variant="secondary" onClick={() => setCheckRegistering(null)}>Cancelar</Button>
+            <Button type="submit" disabled={checkSaving}>{checkSaving ? "Registrando..." : "Registrar cheque"}</Button>
+          </footer>
+        </form>
+      </Modal>
+      <Modal
+        open={Boolean(creditEditing)}
+        onClose={() => setCreditEditing(null)}
+        title={`Credito corporativo ${creditEditing?.cliente ?? creditEditing?.id ?? ""}`}
+        description="Aprueba, actualiza o bloquea la linea de credito de clientes empresariales."
+      >
+        <form onSubmit={submitCreditEditor}>
+          <div className="form-grid">
+            <label>
+              <span>Limite</span>
+              <input min="0" type="number" value={creditValues.creditLimit} onChange={(event) => setCreditValues((current) => ({ ...current, creditLimit: event.target.value }))} />
+            </label>
+            <label>
+              <span>Dias</span>
+              <input min="1" type="number" value={creditValues.creditDays} onChange={(event) => setCreditValues((current) => ({ ...current, creditDays: event.target.value }))} />
+            </label>
+            <label className="span-2">
+              <span>Estado</span>
+              <select value={creditValues.status} onChange={(event) => setCreditValues((current) => ({ ...current, status: event.target.value }))}>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="PENDING">PENDING</option>
+                <option value="BLOCKED">BLOCKED</option>
+              </select>
+            </label>
+            <label className="span-2">
+              <span>Notas</span>
+              <textarea rows={3} value={creditValues.notes} onChange={(event) => setCreditValues((current) => ({ ...current, notes: event.target.value }))} />
+            </label>
+          </div>
+          <footer className="modal-actions">
+            <Button type="button" variant="secondary" onClick={() => setCreditEditing(null)}>Cancelar</Button>
+            <Button type="submit" disabled={creditSaving}>{creditSaving ? "Guardando..." : "Guardar credito"}</Button>
           </footer>
         </form>
       </Modal>

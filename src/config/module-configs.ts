@@ -103,7 +103,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     columns: [
       { key: "cliente", label: "Cuenta", type: "strong" }, { key: "tipo", label: "Tipo" },
-      { key: "documento", label: "Documento" }, { key: "volumen", label: "Volumen" }, { key: "cobro", label: "Cobro" }, { key: "estado", label: "Estado", type: "status" },
+      { key: "documento", label: "Documento" }, { key: "volumen", label: "Volumen" }, { key: "cobro", label: "Credito", type: "status" }, { key: "estado", label: "Estado", type: "status" },
     ],
     rows: [],
     filters: [

@@ -164,7 +164,10 @@ export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit,
 type DrawerTab = "general" | "activity" | "documents" | "audit";
 
 export function Drawer({ entityId, entityType, extraActions, row, onClose }: { entityId?: string; entityType?: string; extraActions?: ReactNode; row: DataRow | null; onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<DrawerTab>("general");
+  const rowId = row?.id ?? "";
+  const [tabState, setTabState] = useState<{ rowId: string; activeTab: DrawerTab }>({ rowId: "", activeTab: "general" });
+  const activeTab = tabState.rowId === rowId ? tabState.activeTab : "general";
+  const setActiveTab = (nextTab: DrawerTab) => setTabState({ rowId, activeTab: nextTab });
   const enabled = Boolean(row && entityId && entityType);
   const activityQuery = useQuery({
     queryKey: ["drawer", "activity", entityType, entityId],
@@ -181,10 +184,6 @@ export function Drawer({ entityId, entityType, extraActions, row, onClose }: { e
     queryFn: () => tmsService.auditLogs(entityType ?? "", entityId ?? ""),
     enabled: enabled && activeTab === "audit",
   });
-
-  useEffect(() => {
-    setActiveTab("general");
-  }, [row?.id]);
 
   return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{displayName(row)}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className={activeTab === "general" ? "active" : ""} onClick={() => setActiveTab("general")}>General</button><button className={activeTab === "activity" ? "active" : ""} onClick={() => setActiveTab("activity")}>Actividad</button><button className={activeTab === "documents" ? "active" : ""} onClick={() => setActiveTab("documents")}>Documentos</button><button className={activeTab === "audit" ? "active" : ""} onClick={() => setActiveTab("audit")}>Auditoría</button></nav><div className="drawer-body">{activeTab === "general" ? <GeneralTab row={row} /> : activeTab === "activity" ? <RemoteTab empty="Sin actividad registrada" loading={activityQuery.isLoading} rows={recordArray(activityQuery.data)} /> : activeTab === "documents" ? <RemoteTab empty="Sin documentos adjuntos" loading={documentsQuery.isLoading} rows={recordArray(documentsQuery.data)} /> : <RemoteTab empty="Sin auditoría registrada" loading={auditQuery.isLoading} rows={recordArray(auditQuery.data)} />}</div><footer><Button variant="secondary" onClick={() => setActiveTab("activity")}>Ver historial</Button>{extraActions}<Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
 }
