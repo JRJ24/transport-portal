@@ -356,19 +356,48 @@ export const tmsService = {
     orderId: string;
     bankName: string;
     checkNumber: string;
-    amount?: number;
+    amount?: string | number;
+    receivedAt?: string;
     notes?: string;
   }) {
-    return postData("/payments/checks", values);
+    return postData("/payments/checks", {
+      orderId: values.orderId,
+      bankName: values.bankName,
+      checkNumber: values.checkNumber,
+      amount: optionalNumber(values.amount),
+      receivedAt: values.receivedAt
+        ? new Date(values.receivedAt).toISOString()
+        : undefined,
+      notes: optionalString(values.notes),
+    });
+  },
+
+  approveCorporateCreditPayment(values: {
+    orderId: string;
+    amount?: string | number;
+    notes?: string;
+  }) {
+    return postData("/payments/corporate-credit", {
+      orderId: values.orderId,
+      amount: optionalNumber(values.amount),
+      notes: optionalString(values.notes),
+    });
   },
 
   updateCustomerCredit(id: string, values: {
-    creditLimit: number;
-    creditDays?: number;
+    creditLimit: string | number;
+    creditDays?: string | number;
     status?: string;
     notes?: string;
   }) {
-    return patchData(`/customers/${id}/credit`, values);
+    return patchData(`/customers/${id}/credit`, {
+      creditLimit: toNumber(values.creditLimit),
+      creditDays: values.creditDays
+        ? Math.round(toNumber(values.creditDays))
+        : undefined,
+      status: optionalString(values.status),
+      notes: optionalString(values.notes),
+    });
   },
 
   createReservation(values: Record<string, string>) {
@@ -519,6 +548,7 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   const latestPayment = asRecordArray(order.payments)[0];
   const orderStatus = getString(order, "status") ?? "--";
   const paymentStatus = getString(order, "paymentStatus") ?? "--";
+  const paymentMethod = getString(latestPayment, "paymentMethod") ?? "";
   const customerName =
     getString(customer, "companyName") ??
     getString(customerUser, "fullName") ??
@@ -528,6 +558,8 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   return {
     id: getString(order, "orderCode") ?? getString(order, "id") ?? "--",
     _id: getString(order, "id") ?? "--",
+    customerId: getString(customer, "id") ?? "",
+    customerType: getString(customer, "customerType") ?? "",
     vehicleCategoryId: getString(order, "vehicleCategoryId") ?? "",
     cliente: customerName,
     origen:
@@ -539,13 +571,15 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     conductor: driverName,
     estado: orderStatusLabel(orderStatus),
     estadoInterno: orderStatus,
-    estadoPago: paymentStatus,
+    estadoPago: paymentStatusLabel(paymentStatus, paymentMethod),
+    estadoPagoInterno: paymentStatus,
     eta: `${getNumber(order, "estimatedDurationMin") ?? "--"} min`,
     precio: getNumber(order, "totalAmount") ?? 0,
     recibo: getString(latestPayment, "providerReference") ?? "--",
     autorizacion: getString(latestPayment, "authorizationCode") ?? "--",
     tarjeta: getString(latestPayment, "maskedCardNumber") ?? "--",
-    metodoPago: getString(latestPayment, "paymentMethod") ?? "--",
+    metodoPago: paymentMethod || "--",
+    paymentProvider: getString(latestPayment, "paymentProvider") ?? "--",
     paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
     prioridad: orderStatus === "PENDING_QUOTE" || orderStatus === "REQUESTED" ? "Alta" : "Normal",
@@ -657,6 +691,19 @@ function orderStatusLabel(status: string) {
   }
   if (status === "FAILED") {
     return "Fallida";
+  }
+  return status;
+}
+
+function paymentStatusLabel(status: string, method: string) {
+  if (status === "PAID") {
+    return "PAGADO";
+  }
+  if (status === "AUTHORIZED" && method === "CHECK") {
+    return "CHEQUE_RECIBIDO";
+  }
+  if (status === "AUTHORIZED" && method === "CORPORATE_CREDIT") {
+    return "CREDITO_APROBADO";
   }
   return status;
 }
@@ -879,7 +926,7 @@ function cleanParams(query?: QueryParams) {
   );
 }
 
-function toNumber(value: string) {
+function toNumber(value: string | number) {
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed)) {
@@ -889,7 +936,7 @@ function toNumber(value: string) {
   return parsed;
 }
 
-function optionalNumber(value: string | undefined) {
+function optionalNumber(value: string | number | undefined) {
   if (!value) {
     return undefined;
   }

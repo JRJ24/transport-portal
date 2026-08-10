@@ -39,6 +39,9 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const [checkRegistering, setCheckRegistering] = useState<DataRow | null>(null);
   const [checkSaving, setCheckSaving] = useState(false);
   const [checkValues, setCheckValues] = useState({ bankName: "", checkNumber: "", amount: "", notes: "" });
+  const [creditApproving, setCreditApproving] = useState<DataRow | null>(null);
+  const [creditApprovalSaving, setCreditApprovalSaving] = useState(false);
+  const [creditApprovalValues, setCreditApprovalValues] = useState({ amount: "", notes: "" });
   const [creditEditing, setCreditEditing] = useState<DataRow | null>(null);
   const [creditSaving, setCreditSaving] = useState(false);
   const [creditValues, setCreditValues] = useState({ creditLimit: "", creditDays: "15", status: "ACTIVE", notes: "" });
@@ -135,7 +138,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     [apiEnabled, rows, search],
   );
   const selectedPaymentId = selected ? String(selected.paymentId ?? "") : "";
-  const selectedPaymentStatus = selected ? String(selected.estadoPago ?? "") : "";
+  const selectedPaymentStatus = selected ? String(selected.estadoPagoInterno ?? selected.estadoPago ?? "") : "";
   const canAssignSelected = Boolean(
     selected &&
       String(selected.conductor) === "Sin asignar" &&
@@ -145,6 +148,13 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const canRegisterCheckSelected = Boolean(
     selected &&
       config.key === "orders" &&
+      !["PAID", "AUTHORIZED"].includes(selectedPaymentStatus) &&
+      Number(selected.precio) > 0,
+  );
+  const canApproveCorporateCreditSelected = Boolean(
+    selected &&
+      config.key === "orders" &&
+      String(selected.customerType) === "BUSINESS" &&
       !["PAID", "AUTHORIZED"].includes(selectedPaymentStatus) &&
       Number(selected.precio) > 0,
   );
@@ -326,6 +336,47 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       toast.error(error instanceof Error ? error.message : "No se pudo registrar el cheque");
     } finally {
       setCheckSaving(false);
+    }
+  };
+
+  const openCorporateCreditApproval = (row: DataRow) => {
+    setCreditApprovalValues({
+      amount: String(row.precio ?? ""),
+      notes: "",
+    });
+    setCreditApproving(row);
+  };
+
+  const submitCorporateCreditApproval = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!creditApproving) return;
+
+    const amount = creditApprovalValues.amount ? Number(creditApprovalValues.amount) : undefined;
+    if (amount !== undefined && (!Number.isFinite(amount) || amount < 0)) {
+      toast.error("Indica un monto valido");
+      return;
+    }
+
+    setCreditApprovalSaving(true);
+    try {
+      await tmsService.approveCorporateCreditPayment({
+        orderId: String(creditApproving._id ?? creditApproving.id),
+        amount,
+        notes: creditApprovalValues.notes.trim() || undefined,
+      });
+      toast.success("Credito aprobado y despacho autorizado");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["tms-module", "customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] }),
+      ]);
+      setCreditApproving(null);
+      setSelected(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo aprobar el credito");
+    } finally {
+      setCreditApprovalSaving(false);
     }
   };
 
@@ -545,6 +596,15 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                   Registrar cheque
                 </Button>
               ) : undefined}
+              {canApproveCorporateCreditSelected ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openCorporateCreditApproval(selected)}
+                >
+                  Aprobar credito
+                </Button>
+              ) : undefined}
               <Button
                 type="button"
                 onClick={() => openAssignment(selected)}
@@ -647,6 +707,29 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
           <footer className="modal-actions">
             <Button type="button" variant="secondary" onClick={() => setCheckRegistering(null)}>Cancelar</Button>
             <Button type="submit" disabled={checkSaving}>{checkSaving ? "Registrando..." : "Registrar cheque"}</Button>
+          </footer>
+        </form>
+      </Modal>
+      <Modal
+        open={Boolean(creditApproving)}
+        onClose={() => setCreditApproving(null)}
+        title={`Aprobar credito ${creditApproving?.id ?? ""}`}
+        description="Autoriza el despacho contra la linea de credito corporativa del cliente."
+      >
+        <form onSubmit={submitCorporateCreditApproval}>
+          <div className="form-grid">
+            <label className="span-2">
+              <span>Monto</span>
+              <input min="0" type="number" value={creditApprovalValues.amount} onChange={(event) => setCreditApprovalValues((current) => ({ ...current, amount: event.target.value }))} />
+            </label>
+            <label className="span-2">
+              <span>Notas</span>
+              <textarea rows={3} value={creditApprovalValues.notes} onChange={(event) => setCreditApprovalValues((current) => ({ ...current, notes: event.target.value }))} />
+            </label>
+          </div>
+          <footer className="modal-actions">
+            <Button type="button" variant="secondary" onClick={() => setCreditApproving(null)}>Cancelar</Button>
+            <Button type="submit" disabled={creditApprovalSaving}>{creditApprovalSaving ? "Aprobando..." : "Aprobar credito"}</Button>
           </footer>
         </form>
       </Modal>

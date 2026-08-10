@@ -45,7 +45,7 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     columns: [
       { key: "id", label: "Orden", type: "strong" }, { key: "cliente", label: "Cliente" }, { key: "origen", label: "Origen" },
       { key: "destino", label: "Destino" }, { key: "servicio", label: "Servicio" }, { key: "conductor", label: "Conductor" },
-      { key: "estado", label: "Estado", type: "status" }, { key: "estadoPago", label: "Pago", type: "status" }, { key: "eta", label: "ETA" }, { key: "precio", label: "Precio", type: "money" },
+      { key: "estado", label: "Estado", type: "status" }, { key: "estadoPago", label: "Pago", type: "status" }, { key: "metodoPago", label: "Método" }, { key: "eta", label: "ETA" }, { key: "precio", label: "Precio", type: "money" },
       { key: "prioridad", label: "Prioridad", type: "status" },
     ],
     rows: [], fields: commonOrderFields,
