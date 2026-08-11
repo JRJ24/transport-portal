@@ -139,6 +139,15 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   );
   const selectedPaymentId = selected ? String(selected.paymentId ?? "") : "";
   const selectedPaymentStatus = selected ? String(selected.estadoPagoInterno ?? selected.estadoPago ?? "") : "";
+  const selectedPaymentProvider = selected ? String(selected.paymentProvider ?? "").toLowerCase() : "";
+  const selectedPaymentMethod = selected ? String(selected.metodoPago ?? "") : "";
+  const selectedPaymentRecordStatus = selected ? String(selected.paymentRecordStatus ?? "") : "";
+  const canVerifyCardnetSelected = Boolean(
+    selectedPaymentId &&
+      selectedPaymentProvider === "cardnet" &&
+      !["PAID", "AUTHORIZED", "FAILED", "CANCELLED", "EXPIRED"].includes(selectedPaymentRecordStatus || selectedPaymentStatus),
+  );
+  const canViewSelectedReceipt = Boolean(selectedPaymentId && !canVerifyCardnetSelected);
   const canAssignSelected = Boolean(
     selected &&
       String(selected.conductor) === "Sin asignar" &&
@@ -310,7 +319,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       toast.error("Indica banco y numero de cheque");
       return;
     }
-    if (amount !== undefined && (!Number.isFinite(amount) || amount < 0)) {
+    if (amount !== undefined && (!Number.isFinite(amount) || amount <= 0)) {
       toast.error("Indica un monto valido");
       return;
     }
@@ -352,7 +361,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     if (!creditApproving) return;
 
     const amount = creditApprovalValues.amount ? Number(creditApprovalValues.amount) : undefined;
-    if (amount !== undefined && (!Number.isFinite(amount) || amount < 0)) {
+    if (amount !== undefined && (!Number.isFinite(amount) || amount <= 0)) {
       toast.error("Indica un monto valido");
       return;
     }
@@ -385,7 +394,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     setCreditValues({
       creditLimit: String(row.creditLimit ?? ""),
       creditDays: String(row.creditDays ?? "15"),
-      status: ["ACTIVE", "PENDING", "BLOCKED"].includes(currentStatus) ? currentStatus : "ACTIVE",
+      status: ["ACTIVE", "PENDING", "BLOCKED", "REJECTED", "CLOSED"].includes(currentStatus) ? currentStatus : "ACTIVE",
       notes: String(row.creditNotes ?? ""),
     });
     setCreditEditing(row);
@@ -431,7 +440,12 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
 
   const verifySelectedPayment = async () => {
     if (!selectedPaymentId) {
-      toast.error("La orden no tiene un pago CardNET asociado");
+      toast.error("La orden no tiene un pago asociado");
+      return;
+    }
+
+    if (selectedPaymentProvider !== "cardnet") {
+      toast.error("Solo los pagos CardNET se validan contra CardNET. Usa Ver recibo para credito o cheque.");
       return;
     }
 
@@ -446,6 +460,25 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       ]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo validar el pago");
+    } finally {
+      setPaymentVerifying(false);
+    }
+  };
+
+  const viewSelectedPaymentReceipt = async () => {
+    if (!selectedPaymentId) {
+      toast.error("La orden no tiene un pago asociado");
+      return;
+    }
+
+    setPaymentVerifying(true);
+    try {
+      const receipt = await tmsService.paymentReceipt(selectedPaymentId) as AnyRecord;
+      const status = String(receipt.status ?? selectedPaymentStatus ?? "--");
+      const amount = Number(receipt.amount ?? selected?.precio ?? 0);
+      toast.success(`Recibo ${status} · RD$ ${amount.toLocaleString("es-DO")}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cargar el recibo");
     } finally {
       setPaymentVerifying(false);
     }
@@ -577,14 +610,24 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             </>
           ) : config.key === "orders" && selected ? (
             <>
-              {selectedPaymentId ? (
+              {canVerifyCardnetSelected ? (
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => void verifySelectedPayment()}
                   disabled={paymentVerifying}
                 >
-                  {paymentVerifying ? "Validando..." : "Validar pago"}
+                  {paymentVerifying ? "Validando..." : "Validar CardNET"}
+                </Button>
+              ) : undefined}
+              {canViewSelectedReceipt ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void viewSelectedPaymentReceipt()}
+                  disabled={paymentVerifying}
+                >
+                  {paymentVerifying ? "Cargando..." : selectedPaymentMethod === "CORPORATE_CREDIT" ? "Ver credito" : "Ver recibo"}
                 </Button>
               ) : undefined}
               {canRegisterCheckSelected ? (
@@ -602,7 +645,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                   variant="secondary"
                   onClick={() => openCorporateCreditApproval(selected)}
                 >
-                  Aprobar credito
+                  Autorizar credito
                 </Button>
               ) : undefined}
               <Button
@@ -613,7 +656,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                 Asignar conductor
               </Button>
             </>
-          ) : config.key === "customers" && selected ? (
+          ) : config.key === "customers" && selected && String(selected.customerType) === "BUSINESS" ? (
             <Button
               type="button"
               variant="secondary"
@@ -697,7 +740,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             </label>
             <label className="span-2">
               <span>Monto</span>
-              <input min="0" type="number" value={checkValues.amount} onChange={(event) => setCheckValues((current) => ({ ...current, amount: event.target.value }))} />
+              <input min="1" type="number" value={checkValues.amount} onChange={(event) => setCheckValues((current) => ({ ...current, amount: event.target.value }))} />
             </label>
             <label className="span-2">
               <span>Notas</span>
@@ -713,14 +756,14 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       <Modal
         open={Boolean(creditApproving)}
         onClose={() => setCreditApproving(null)}
-        title={`Aprobar credito ${creditApproving?.id ?? ""}`}
+        title={`Autorizar credito ${creditApproving?.id ?? ""}`}
         description="Autoriza el despacho contra la linea de credito corporativa del cliente."
       >
         <form onSubmit={submitCorporateCreditApproval}>
           <div className="form-grid">
             <label className="span-2">
               <span>Monto</span>
-              <input min="0" type="number" value={creditApprovalValues.amount} onChange={(event) => setCreditApprovalValues((current) => ({ ...current, amount: event.target.value }))} />
+              <input min="1" type="number" value={creditApprovalValues.amount} onChange={(event) => setCreditApprovalValues((current) => ({ ...current, amount: event.target.value }))} />
             </label>
             <label className="span-2">
               <span>Notas</span>
@@ -729,7 +772,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
           </div>
           <footer className="modal-actions">
             <Button type="button" variant="secondary" onClick={() => setCreditApproving(null)}>Cancelar</Button>
-            <Button type="submit" disabled={creditApprovalSaving}>{creditApprovalSaving ? "Aprobando..." : "Aprobar credito"}</Button>
+            <Button type="submit" disabled={creditApprovalSaving}>{creditApprovalSaving ? "Autorizando..." : "Autorizar credito"}</Button>
           </footer>
         </form>
       </Modal>
@@ -755,6 +798,8 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                 <option value="ACTIVE">ACTIVE</option>
                 <option value="PENDING">PENDING</option>
                 <option value="BLOCKED">BLOCKED</option>
+                <option value="REJECTED">REJECTED</option>
+                <option value="CLOSED">CLOSED</option>
               </select>
             </label>
             <label className="span-2">

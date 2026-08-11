@@ -545,9 +545,10 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   const driver = asRecord(assignment?.driver);
   const driverUser = asRecord(driver?.user);
   const vehicleCategory = asRecord(order.vehicleCategory);
-  const latestPayment = asRecordArray(order.payments)[0];
+  const latestPayment = pickRelevantPayment(asRecordArray(order.payments));
   const orderStatus = getString(order, "status") ?? "--";
   const paymentStatus = getString(order, "paymentStatus") ?? "--";
+  const paymentRecordStatus = getString(latestPayment, "status") ?? "";
   const paymentMethod = getString(latestPayment, "paymentMethod") ?? "";
   const customerName =
     getString(customer, "companyName") ??
@@ -580,10 +581,23 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     tarjeta: getString(latestPayment, "maskedCardNumber") ?? "--",
     metodoPago: paymentMethod || "--",
     paymentProvider: getString(latestPayment, "paymentProvider") ?? "--",
+    paymentRecordStatus,
     paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
     prioridad: orderStatus === "PENDING_QUOTE" || orderStatus === "REQUESTED" ? "Alta" : "Normal",
   };
+}
+
+function pickRelevantPayment(payments: AnyRecord[]) {
+  return (
+    payments.find((payment) =>
+      ["PAID", "AUTHORIZED"].includes(getString(payment, "status") ?? ""),
+    ) ??
+    payments.find((payment) =>
+      ["PROCESSING", "PENDING"].includes(getString(payment, "status") ?? ""),
+    ) ??
+    payments[0]
+  );
 }
 
 export function mapDriverRow(driver: AnyRecord): DataRow {
@@ -663,6 +677,7 @@ export function mapCustomerRow(customer: AnyRecord): DataRow {
     documento: getString(customer, "documentNumber") ?? "--",
     volumen: String(orders.length || "--"),
     cobro: creditStatus,
+    creditoDisponible: creditLimit > 0 ? formatCurrency(creditAvailable) : "--",
     estado: getString(user, "status") ?? "ACTIVE",
   };
 }
@@ -937,7 +952,7 @@ function toNumber(value: string | number) {
 }
 
 function optionalNumber(value: string | number | undefined) {
-  if (!value) {
+  if (value === undefined || value === "") {
     return undefined;
   }
 
@@ -997,6 +1012,14 @@ function formatDateTime(value: string | undefined) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("es-DO", {
+    currency: "DOP",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
 }
 
 function asRecord(value: unknown): AnyRecord | undefined {
