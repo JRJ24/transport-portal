@@ -113,3 +113,55 @@ export function stopsFromOrders(orders: DataRow[]): MapStop[] {
     ].filter((stop): stop is MapStop => Boolean(stop));
   });
 }
+
+/** Formatea coordenadas para mostrarlas en el formulario. */
+export function formatLatLng(point?: LatLngLiteral | null) {
+  return point ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}` : "Sin coordenadas";
+}
+
+/** Lee latitud/longitud desde los campos de texto del formulario de orden. */
+export function toLatLngFromForm(latitude?: string, longitude?: string): LatLngLiteral | null {
+  if (!latitude || !longitude) {
+    return null;
+  }
+
+  return toLatLng({ latitude, longitude });
+}
+
+/**
+ * Parte a nivel de calle de una direccion formateada por Google.
+ *
+ * Google devuelve "Calle Duarte 12, Santo Domingo Este 11510, Republica
+ * Dominicana"; provincia y municipio ya viven en sus propios selects, asi que
+ * el campo Direccion se queda solo con el primer tramo.
+ */
+export function streetOf(formattedAddress: string) {
+  const [street] = formattedAddress.split(",");
+  return (street ?? formattedAddress).trim();
+}
+
+/**
+ * Compara nombres de provincia/municipio ignorando acentos y mayusculas.
+ * Google devuelve "Peravia" o "Distrito Nacional" con tildes segun el caso.
+ */
+export function foldName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Busca en una direccion formateada el nombre de catalogo que aparece en ella.
+ * Prefiere la coincidencia mas larga: "Santo Domingo Este" antes que "Santo Domingo".
+ */
+export function matchCatalogName<T extends { id: string; name: string }>(
+  formattedAddress: string,
+  options: T[],
+): T | undefined {
+  const haystack = foldName(formattedAddress);
+  return [...options]
+    .filter((option) => option.name && haystack.includes(foldName(option.name)))
+    .sort((left, right) => right.name.length - left.name.length)[0];
+}

@@ -33,3 +33,31 @@
 .segmented { display:flex; padding:3px; border-radius:7px; background:#f0f3f8; }.segmented button { min-height:26px; border-radius:5px; padding:0 10px; background:transparent; color:#718096; font-size:9px; }.segmented button.active { background:white; color:#273348; font-weight:750; box-shadow:0 1px 4px rgba(20,35,60,.1); }
 .filter-chip--select { gap:6px; padding-right:6px; }.filter-chip--select select { border:0; background:transparent; color:inherit; font:inherit; outline:0; }
 .quote-preview { display:flex; align-items:flex-start; flex-direction:column; gap:4px; margin-top:12px; border:1px solid #bae6fd; border-radius:10px; padding:12px; background:#f0f9ff; color:#075985; }.quote-preview strong { color:#0c4a6e; font-size:18px; }.quote-preview span { color:#31566c; font-size:10px; }.quote-preview small { color:#47728a; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+
+/* Planificador de ruta: recogida y entrega sobre un solo mapa. */
+.route-planner { display:grid; grid-column:1 / -1; gap:0; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:white; }
+.route-planner>header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; }
+.route-planner__stops { display:flex; flex:1; flex-wrap:wrap; gap:8px; min-width:0; }
+.route-planner__stop { display:flex; flex:1; min-width:170px; align-items:center; gap:8px; border:1px solid #e6ebf2; border-radius:8px; padding:8px 10px; background:#fbfcfe; text-align:left; }
+.route-planner__stop:hover { border-color:#cbd8ec; background:#f6f9ff; }
+.route-planner__stop[aria-pressed='true'] { border-color:var(--blue); background:#eef4ff; }
+.route-planner__stop i { width:9px; height:9px; flex:0 0 auto; border-radius:50%; }
+.route-planner__stop span { display:grid; min-width:0; gap:2px; }
+.route-planner__stop small { color:#7b8798; font-size:7px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.route-planner__stop strong { overflow:hidden; color:#202b3d; font-size:9px; white-space:nowrap; text-overflow:ellipsis; }
+.route-planner__toggle { display:flex; align-items:center; gap:5px; border:1px solid #dce3ec; border-radius:999px; padding:7px 12px; background:white; color:var(--blue); font-size:9px; font-weight:800; }
+.route-planner__toggle svg { transition:transform .18s ease; }
+.route-planner.is-open .route-planner__toggle svg { transform:rotate(180deg); }
+.route-planner__body { display:grid; gap:8px; padding:0 13px 11px; }
+.route-planner__tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
+.route-planner__tools>span { display:flex; align-items:center; gap:5px; color:#53627a; font-size:9px; font-weight:700; }
+.route-planner__tools>span strong { color:var(--blue); }
+.route-planner__tools>div { display:flex; flex-wrap:wrap; gap:6px; }
+.route-planner__tools button { display:flex; align-items:center; gap:5px; border:1px solid #dce3ec; border-radius:999px; padding:6px 11px; background:white; color:#354158; font-size:9px; font-weight:800; }
+.route-planner__tools button:hover:not(:disabled) { border-color:#b9c9e4; color:var(--blue); }
+.route-planner__tools button:disabled { opacity:.45; cursor:not-allowed; }
+.route-planner__map { position:relative; height:320px; overflow:hidden; border-radius:8px; background:linear-gradient(145deg,#dceaff,#c8dcf7); isolation:isolate; }
+.route-planner__body>small { color:#7b8798; font-size:8px; font-weight:700; }
+.route-planner>footer { display:flex; flex-wrap:wrap; align-items:center; gap:4px 9px; border-top:1px solid var(--line); padding:10px 13px; background:#f5f9ff; color:#41506a; }
+.route-planner>footer strong { color:#1c2638; font-size:12px; }
+.route-planner>footer span { flex:1; min-width:170px; color:#7b8798; font-size:9px; font-weight:700; }

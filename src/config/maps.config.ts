@@ -58,7 +58,15 @@ export const DOMINICAN_REPUBLIC_BOUNDS = {
 export const MAP_INSTANCE_IDS = {
   dashboard: "dashboard-live-map",
   fleet: "fleet-live-map",
+  planner: "order-route-planner",
 } as const;
+
+/** Trazo de la ruta entre recogida y entrega en el planificador. */
+export const ROUTE_STROKE = {
+  color: "#2463eb",
+  opacity: 0.9,
+  weight: 5,
+};
 
 /** Paleta de marcadores por tipo de punto. */
 export const MAP_TONES = {

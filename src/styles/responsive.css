@@ -29,6 +29,9 @@
   .map-controls { top:10px; left:10px; }.map-controls button { width:28px; height:28px; }
   .map-legend { gap:7px; bottom:10px; left:10px; padding:6px 8px; }
   .map-sync { bottom:10px; right:10px; }
+  .route-planner__map { height:min(52vh,320px); }
+  .route-planner__stop { min-width:100%; }
+  .route-planner__toggle { width:100%; justify-content:center; }
 }
 
 @media (max-width:480px) {

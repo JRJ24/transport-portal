@@ -102,4 +102,9 @@ h1, h2, h3, p { margin: 0; }
 [data-theme="dark"] .map-info { color: #1f2937; }
 [data-theme="dark"] .map-controls button { background: #0d1728; border-color: var(--line); color: #aab7cc; }
 [data-theme="dark"] .map-legend { background: rgba(13,23,40,.92); color: #aab7cc; }
+[data-theme="dark"] .route-planner { background: var(--panel); border-color: var(--line); }
+[data-theme="dark"] .route-planner__stop,[data-theme="dark"] .route-planner__toggle,[data-theme="dark"] .route-planner__tools button { background: #0d1728; border-color: var(--line); color: #aab7cc; }
+[data-theme="dark"] .route-planner__stop strong,[data-theme="dark"] .route-planner>footer strong { color: var(--text); }
+[data-theme="dark"] .route-planner__map { background: #0d1728; }
+[data-theme="dark"] .route-planner>footer { background: #0b1424; border-color: var(--line); }
 @media (max-width: 820px) { .auth-page { grid-template-columns: 1fr; }.auth-side { display: none; }.auth-card { min-height: 100vh; } }

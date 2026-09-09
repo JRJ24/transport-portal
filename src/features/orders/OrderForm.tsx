@@ -8,9 +8,17 @@ import {
   type FormEvent,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Plus, Search } from "lucide-react";
+import { Check, Loader2, Plus, Route, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Modal } from "@/components/ui";
+import {
+  RoutePlanner,
+  type PlannerRoute,
+  type ResolvedLocation,
+  type StopScope,
+} from "@/components/map/RoutePlanner";
+import type { LatLngLiteral } from "@/config/maps.config";
+import { matchCatalogName, pointKey, streetOf, toLatLngFromForm } from "@/lib/maps";
 import { tmsService, type AnyRecord } from "@/services/tms.service";
 
 type FormValues = Record<string, string>;
@@ -55,6 +63,15 @@ export function OrderForm({
   const [submittingMode, setSubmittingMode] = useState<SubmitMode | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [quotePreview, setQuotePreview] = useState<AnyRecord | null>(null);
+  const [routeInfo, setRouteInfo] = useState<PlannerRoute | null>(null);
+  const [manualRoute, setManualRoute] = useState(false);
+  // Direccion cuyo municipio queda por resolver: el catalogo de municipios
+  // solo se carga despues de fijar la provincia.
+  const [pendingCity, setPendingCity] = useState<
+    Partial<Record<StopScope, string>>
+  >({});
+  // Direccion legible de cada parada, para las filas del planificador.
+  const [stopLabels, setStopLabels] = useState<Partial<Record<StopScope, string>>>({});
   const deferredCustomerSearch = useDeferredValue(customerSearch.trim());
 
   const customersQuery = useQuery({
@@ -88,6 +105,11 @@ export function OrderForm({
     staleTime: 10 * 60_000,
   });
 
+  const originPoint = toLatLngFromForm(values.originLatitude, values.originLongitude);
+  const destinationPoint = toLatLngFromForm(
+    values.destinationLatitude,
+    values.destinationLongitude,
+  );
   const customers = customersQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
   const provinces = provincesQuery.data ?? [];
@@ -111,6 +133,117 @@ export function OrderForm({
     }
   }, [values.destinationProvinceId]);
 
+  // El municipio solo se puede resolver cuando llega su catalogo, que a su vez
+  // depende de la provincia que acaba de fijar la geocodificacion.
+  useEffect(() => {
+    const catalogs = {
+      origin: originMunicipalitiesQuery.data ?? [],
+      destination: destinationMunicipalitiesQuery.data ?? [],
+    };
+
+    for (const scope of ["origin", "destination"] as const) {
+      const formattedAddress = pendingCity[scope];
+      const municipalities = catalogOptions(catalogs[scope]);
+
+      if (!formattedAddress || municipalities.length === 0) {
+        continue;
+      }
+
+      const municipality = matchCatalogName(formattedAddress, municipalities);
+      setPendingCity((current) => ({ ...current, [scope]: undefined }));
+
+      if (!municipality) {
+        continue;
+      }
+
+      setValues((current) => ({
+        ...current,
+        [`${scope}CityId`]: municipality.id,
+        [`${scope}City`]: municipality.name,
+      }));
+      setErrors((current) => {
+        const next = { ...current };
+        delete next[`${scope}City`];
+        delete next[`${scope}Province`];
+        return next;
+      });
+    }
+  }, [
+    destinationMunicipalitiesQuery.data,
+    originMunicipalitiesQuery.data,
+    pendingCity,
+  ]);
+
+  /**
+   * Distancia y duracion reales de la ruta, para alimentar la cotizacion.
+   * Devuelve `false` si no se pudo calcular, para que quien llame decida.
+   */
+  const syncRoute = async (origin: LatLngLiteral, destination: LatLngLiteral) => {
+    try {
+      const route = await tmsService.computeRoute(
+        { latitude: origin.lat, longitude: origin.lng },
+        { latitude: destination.lat, longitude: destination.lng },
+      );
+      setRouteInfo(route);
+      setValues((current) => ({
+        ...current,
+        distanceKm: route.distanceKm.toFixed(2),
+        estimatedDurationMin: String(Math.round(route.durationMin)),
+      }));
+      return true;
+    } catch (error) {
+      setRouteInfo(null);
+      toast.warning(
+        error instanceof Error
+          ? `No se pudo calcular la ruta: ${error.message}`
+          : "No se pudo calcular la ruta",
+      );
+      setManualRoute(true);
+      return false;
+    }
+  };
+
+  // Ruta automatica: al cambiar cualquiera de las dos paradas se recalcula
+  // distancia y duracion, con un respiro para no llamar en cada arrastre.
+  const routeSignature =
+    originPoint && destinationPoint
+      ? `${pointKey(originPoint)}|${pointKey(destinationPoint)}`
+      : "";
+
+  useEffect(() => {
+    if (!routeSignature) {
+      setRouteInfo(null);
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      const [origin, destination] = routeSignature.split("|").map(parsePoint);
+      void syncRoute(origin, destination);
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [routeSignature]);
+
+  // Cotizacion automatica: se recalcula cuando cambian los parametros que
+  // entran en el precio, sin esperar al boton.
+  const quoteSignature = autoQuoteSignature(values);
+
+  useEffect(() => {
+    if (!quoteSignature) {
+      setQuotePreview(null);
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      tmsService
+        .previewManualQuote(values)
+        .then(setQuotePreview)
+        .catch(() => setQuotePreview(null));
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [quoteSignature]);
+
   const setField = (name: string, value: string) => {
     setValues((current) => ({ ...current, [name]: value }));
     if (quoteFields.has(name)) {
@@ -121,6 +254,59 @@ export function OrderForm({
       delete next[name];
       return next;
     });
+  };
+
+  /**
+   * Guarda la parada elegida en el mapa.
+   *
+   * Latitud y longitud viven en `values` pero ya no se muestran: el operador
+   * trabaja sobre el mapa. Cambiar una parada invalida la ruta y la cotizacion.
+   */
+  const resolveLocation = (scope: StopScope, { formattedAddress, point }: ResolvedLocation) => {
+    setStopLabels((current) => ({
+      ...current,
+      [scope]: point ? (formattedAddress ?? current[scope]) : undefined,
+    }));
+    setValues((current) => ({
+      ...current,
+      [`${scope}Latitude`]: point ? point.lat.toFixed(6) : "",
+      [`${scope}Longitude`]: point ? point.lng.toFixed(6) : "",
+      ...(formattedAddress ? { [`${scope}Address`]: streetOf(formattedAddress) } : {}),
+    }));
+    setRouteInfo(null);
+    setQuotePreview(null);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[`${scope}Latitude`];
+      delete next[`${scope}Longitude`];
+      delete next[`${scope}Address`];
+      return next;
+    });
+
+    if (formattedAddress) {
+      applyGeocodedCatalogs(scope, formattedAddress);
+    }
+  };
+
+  /** Provincia y municipio deducidos de la direccion que devolvio Google. */
+  const applyGeocodedCatalogs = (scope: StopScope, formattedAddress: string) => {
+    const province = matchCatalogName(formattedAddress, catalogOptions(provinces));
+    if (!province) {
+      return;
+    }
+
+    setValues((current) =>
+      current[`${scope}ProvinceId`] === province.id
+        ? current
+        : {
+            ...current,
+            [`${scope}ProvinceId`]: province.id,
+            [`${scope}Province`]: province.name,
+            [`${scope}CityId`]: "",
+            [`${scope}City`]: "",
+          },
+    );
+    setPendingCity((current) => ({ ...current, [scope]: formattedAddress }));
   };
 
   const selectCustomer = (customer: AnyRecord) => {
@@ -174,17 +360,22 @@ export function OrderForm({
   };
 
   const previewQuote = async () => {
-    const nextErrors = validate(values, selectedCategory, {
-      requireManualQuote: true,
-    });
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) {
-      focusFirstError(nextErrors);
-      return;
-    }
-
     setIsPreviewing(true);
     try {
+      // La ruta va primero: rellena distancia y duracion antes de validar.
+      if (originPoint && destinationPoint && !routeInfo) {
+        await syncRoute(originPoint, destinationPoint);
+      }
+
+      const nextErrors = validate(values, selectedCategory, {
+        requireManualQuote: true,
+      });
+      setErrors(nextErrors);
+      if (Object.keys(nextErrors).length > 0) {
+        focusFirstError(nextErrors);
+        return;
+      }
+
       const quote = await tmsService.previewManualQuote(values);
       setQuotePreview(quote);
       toast.success("Cotización provisional calculada");
@@ -198,6 +389,15 @@ export function OrderForm({
   };
 
   const submitWithMode = async (submitMode: SubmitMode) => {
+    if (
+      submitMode === "CREATE_AND_QUOTE" &&
+      originPoint &&
+      destinationPoint &&
+      !routeInfo
+    ) {
+      await syncRoute(originPoint, destinationPoint);
+    }
+
     const nextErrors = validate(values, selectedCategory, {
       requireManualQuote: submitMode === "CREATE_AND_QUOTE",
     });
@@ -371,6 +571,21 @@ export function OrderForm({
           </div>
         </section>
 
+        <RoutePlanner
+          destination={{
+            address: fullStopAddress(values, "destination"),
+            label: stopLabels.destination,
+            point: destinationPoint,
+          }}
+          onResolve={resolveLocation}
+          origin={{
+            address: fullStopAddress(values, "origin"),
+            label: stopLabels.origin,
+            point: originPoint,
+          }}
+          route={routeInfo}
+        />
+
         <LocationSection
           title="Origen"
           scope="origin"
@@ -527,46 +742,59 @@ export function OrderForm({
             <div>
               <strong>Cotización</strong>
               <span>
-                Calcula una tarifa manual provisional. Google Maps podrá
-                reemplazar distancia y duración más adelante.
+                Se recalcula sola al mover las paradas o cambiar un recargo.
+                Distancia y duración salen de la ruta del mapa.
               </span>
             </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setManualRoute((current) => !current)}
+            >
+              <Route size={14} />{" "}
+              {manualRoute ? "Ocultar ajuste manual" : "Ajustar distancia"}
+            </Button>
           </header>
+
           <div className="form-grid">
-            <label>
-              <span>Distancia manual km</span>
-              <input
-                name="distanceKm"
-                type="number"
-                min="0.1"
-                step="0.01"
-                value={values.distanceKm ?? ""}
-                onChange={(event) => setField("distanceKm", event.target.value)}
-                placeholder="Ej. 12.5"
-              />
-              {errors.distanceKm && (
-                <small className="field-error">{errors.distanceKm}</small>
-              )}
-            </label>
-            <label>
-              <span>Duración estimada min</span>
-              <input
-                name="estimatedDurationMin"
-                type="number"
-                min="0"
-                step="1"
-                value={values.estimatedDurationMin ?? ""}
-                onChange={(event) =>
-                  setField("estimatedDurationMin", event.target.value)
-                }
-                placeholder="Ej. 35"
-              />
-              {errors.estimatedDurationMin && (
-                <small className="field-error">
-                  {errors.estimatedDurationMin}
-                </small>
-              )}
-            </label>
+            {manualRoute && (
+              <>
+                <label>
+                  <span>Distancia manual km</span>
+                  <input
+                    name="distanceKm"
+                    type="number"
+                    min="0.1"
+                    step="0.01"
+                    value={values.distanceKm ?? ""}
+                    onChange={(event) => setField("distanceKm", event.target.value)}
+                    placeholder="Ej. 12.5"
+                  />
+                  {errors.distanceKm && (
+                    <small className="field-error">{errors.distanceKm}</small>
+                  )}
+                </label>
+                <label>
+                  <span>Duración estimada min</span>
+                  <input
+                    name="estimatedDurationMin"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={values.estimatedDurationMin ?? ""}
+                    onChange={(event) =>
+                      setField("estimatedDurationMin", event.target.value)
+                    }
+                    placeholder="Ej. 35"
+                  />
+                  {errors.estimatedDurationMin && (
+                    <small className="field-error">
+                      {errors.estimatedDurationMin}
+                    </small>
+                  )}
+                </label>
+              </>
+            )}
             <label>
               <span>Peajes</span>
               <input
@@ -776,7 +1004,10 @@ function LocationSection({
       <header className="section-title">
         <div>
           <strong>{title}</strong>
-          <span>Provincia y municipio son dependientes.</span>
+          <span>
+            Provincia y municipio son dependientes. Las coordenadas salen del
+            mapa.
+          </span>
         </div>
       </header>
       <div className="form-grid form-grid--single">
@@ -879,38 +1110,11 @@ function LocationSection({
             </small>
           )}
         </label>
-        <label>
-          <span>Latitud (opcional)</span>
-          <input
-            name={`${prefix}Latitude`}
-            type="number"
-            step="0.000001"
-            value={values[`${prefix}Latitude`] ?? ""}
-            onChange={(event) =>
-              onField(`${prefix}Latitude`, event.target.value)
-            }
-          />
-          {errors[`${prefix}Latitude`] && (
-            <small className="field-error">{errors[`${prefix}Latitude`]}</small>
-          )}
-        </label>
-        <label>
-          <span>Longitud (opcional)</span>
-          <input
-            name={`${prefix}Longitude`}
-            type="number"
-            step="0.000001"
-            value={values[`${prefix}Longitude`] ?? ""}
-            onChange={(event) =>
-              onField(`${prefix}Longitude`, event.target.value)
-            }
-          />
-          {errors[`${prefix}Longitude`] && (
-            <small className="field-error">
-              {errors[`${prefix}Longitude`]}
-            </small>
-          )}
-        </label>
+        {(errors[`${prefix}Latitude`] || errors[`${prefix}Longitude`]) && (
+          <small className="field-error span-2">
+            {errors[`${prefix}Latitude`] ?? errors[`${prefix}Longitude`]}
+          </small>
+        )}
       </div>
     </section>
   );
@@ -1074,6 +1278,55 @@ function QuickCustomerForm({
       </footer>
     </form>
   );
+}
+
+/** Reconstruye un punto desde su clave, para que los efectos dependan solo de strings. */
+function parsePoint(key: string) {
+  const [lat, lng] = key.split(",").map(Number);
+  return { lat, lng };
+}
+
+/** Direccion completa de una parada, tal como la busca el geocodificador. */
+function fullStopAddress(values: FormValues, scope: StopScope) {
+  return [
+    values[`${scope}Address`],
+    values[`${scope}City`],
+    values[`${scope}Province`],
+    "República Dominicana",
+  ]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
+ * Clave de los parametros que entran en el precio.
+ *
+ * Vacia mientras falte algo obligatorio: asi la cotizacion automatica no
+ * dispara llamadas que el backend rechazaria.
+ */
+function autoQuoteSignature(values: FormValues) {
+  const required = [values.customerId, values.vehicleCategoryId, values.distanceKm];
+  if (required.some((value) => !value?.trim()) || Number(values.distanceKm) <= 0) {
+    return "";
+  }
+
+  return [
+    values.customerId,
+    values.vehicleCategoryId,
+    values.distanceKm,
+    values.estimatedDurationMin ?? "",
+    values.itemRequireHelper ?? "",
+    ...[...quoteFields].map((field) => values[field] ?? ""),
+  ].join("|");
+}
+
+/** Normaliza filas de catalogo (`AnyRecord`) al par id/nombre que compara el matcher. */
+function catalogOptions(rows: AnyRecord[]) {
+  return rows.map((row) => ({
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+  }));
 }
 
 function validate(

@@ -3,6 +3,7 @@ import { ColorScheme, Map, useMap } from "@vis.gl/react-google-maps";
 import {
   COMPACT_ZOOM,
   DEFAULT_ZOOM,
+  DOMINICAN_REPUBLIC_BOUNDS,
   FIT_PADDING,
   FOCUS_ZOOM,
   MAX_FIT_ZOOM,
@@ -23,10 +24,21 @@ export interface MapCanvasProps {
   compact?: boolean;
   /** Cuando llega, la camara sigue a este punto (GPS en vivo). */
   followPoint?: LatLngLiteral | null;
+  /**
+   * Gestos del mapa. Por defecto `greedy` en el mapa completo y `cooperative`
+   * en el compacto, para que la rueda del raton siga desplazando la pagina.
+   */
+  gesture?: "cooperative" | "greedy";
   /** Id de instancia; obligatorio porque el portal monta varios mapas. */
   id: string;
+  /** Clic en el mapa: lo usa el selector de paradas del formulario de orden. */
+  onPick?: (position: LatLngLiteral) => void;
   /** Puntos a encuadrar automaticamente mientras no haya `followPoint`. */
   points?: LatLngLiteral[];
+  /** Restringe el paneo a Republica Dominicana (selector de paradas). */
+  restrictToCountry?: boolean;
+  /** Zoom inicial; por defecto el general del portal. */
+  zoom?: number;
 }
 
 /**
@@ -38,7 +50,17 @@ export interface MapCanvasProps {
  *
  * El padre debe tener altura propia y `position: relative`.
  */
-export function MapCanvas({ children, compact = false, followPoint = null, id, points = [] }: MapCanvasProps) {
+export function MapCanvas({
+  children,
+  compact = false,
+  followPoint = null,
+  gesture,
+  id,
+  onPick,
+  points = [],
+  restrictToCountry = false,
+  zoom,
+}: MapCanvasProps) {
   const colorScheme = useDocumentColorScheme();
 
   if (!hasGoogleMapsKey) {
@@ -52,13 +74,19 @@ export function MapCanvas({ children, compact = false, followPoint = null, id, p
         clickableIcons={false}
         colorScheme={colorScheme}
         defaultCenter={centerFromPoints(points)}
-        defaultZoom={compact ? COMPACT_ZOOM : DEFAULT_ZOOM}
+        defaultZoom={zoom ?? (compact ? COMPACT_ZOOM : DEFAULT_ZOOM)}
         disableDefaultUI
         fullscreenControl={!compact}
-        gestureHandling={compact ? "cooperative" : "greedy"}
+        gestureHandling={gesture ?? (compact ? "cooperative" : "greedy")}
         id={id}
         keyboardShortcuts={!compact}
         mapId={hasGoogleMapsMapId ? googleMapsMapId : undefined}
+        onClick={onPick ? (event) => event.detail.latLng && onPick(event.detail.latLng) : undefined}
+        restriction={
+          restrictToCountry
+            ? { latLngBounds: DOMINICAN_REPUBLIC_BOUNDS, strictBounds: false }
+            : undefined
+        }
         reuseMaps
       >
         <MapCamera followPoint={followPoint} points={points} />

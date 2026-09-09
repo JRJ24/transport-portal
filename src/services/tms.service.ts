@@ -32,6 +32,19 @@ export interface LiveLocation {
   receivedAt: string;
 }
 
+export interface GeoPointInput {
+  latitude: number;
+  longitude: number;
+}
+
+export interface GeocodeMatch {
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  /** `internal-mock` = el backend no tiene GOOGLE_MAPS_SERVER_API_KEY. */
+  provider: string;
+}
+
 export interface HealthStatus {
   status: "ok" | "degraded";
   database: "up" | "down";
@@ -141,6 +154,38 @@ export const tmsService = {
 
   municipalities(provinceId: string) {
     return getList(`/catalogs/provinces/${provinceId}/municipalities`);
+  },
+
+  /**
+   * Direccion escrita -> coordenadas. Usa la clave de *servidor* del backend,
+   * asi que funciona aunque la clave browser del portal este sin facturacion.
+   */
+  async geocode(address: string) {
+    const results = await postList("/maps/geocode", { address });
+    return results.map(mapGeocodeResult);
+  },
+
+  /** Coordenadas -> direccion legible (al mover el punto en el mapa). */
+  async reverseGeocode(latitude: number, longitude: number) {
+    const results = await postList("/maps/reverse-geocode", {
+      latitude,
+      longitude,
+    });
+    return results.map(mapGeocodeResult);
+  },
+
+  /**
+   * Ruta en carretera entre dos paradas (Google Routes API, clave de servidor).
+   * Devuelve distancia y duracion reales para alimentar la cotizacion.
+   */
+  async computeRoute(origin: GeoPointInput, destination: GeoPointInput) {
+    const route = await postData("/routes/compute", { origin, destination });
+    return {
+      distanceKm: getNumber(route, "distanceKm") ?? 0,
+      durationMin: getNumber(route, "durationMin") ?? 0,
+      polyline: getString(route, "polyline") ?? "",
+      provider: getString(route, "provider") ?? "internal-mock",
+    };
   },
 
   previewManualQuote(values: Record<string, string>) {
@@ -594,6 +639,16 @@ export function mapOrderRow(order: AnyRecord): DataRow {
   };
 }
 
+function mapGeocodeResult(result: AnyRecord): GeocodeMatch {
+  const location = asRecord(result.location);
+  return {
+    formattedAddress: getString(result, "formattedAddress") ?? "",
+    latitude: getNumber(location, "latitude") ?? 0,
+    longitude: getNumber(location, "longitude") ?? 0,
+    provider: getString(result, "provider") ?? "internal-mock",
+  };
+}
+
 function pickRelevantPayment(payments: AnyRecord[]) {
   return (
     payments.find((payment) =>
@@ -913,6 +968,12 @@ async function getList(
 async function postData(endpoint: string, payload: unknown) {
   const response = await api.post<ApiResponse<AnyRecord>>(endpoint, payload);
   return unwrapApiResponse(response.data);
+}
+
+async function postList(endpoint: string, payload: unknown) {
+  const response = await api.post<ApiResponse<AnyRecord[]>>(endpoint, payload);
+  const data = unwrapApiResponse(response.data);
+  return Array.isArray(data) ? data : [];
 }
 
 async function putData(endpoint: string, payload: unknown) {
