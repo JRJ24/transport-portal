@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button, PageHeader, StatCard, StatusBadge } from "@/components/ui";
 import { LiveMap } from "@/components/LiveMap";
+import { stopsFromOrders } from "@/lib/maps";
 import { useLiveLocations } from "@/services/realtime.service";
 import {
   mapLiveLocation,
@@ -74,6 +75,7 @@ export function DashboardPage({
     latestLocationsQuery.data ?? [],
     liveLocations,
   );
+  const mapStops = stopsFromOrders(realOrders.slice(0, 8));
   const openIncidents = incidentsQuery.data ?? [];
   const pendingEvidence = evidenceQuery.data ?? [];
   const ordersByStatus = summaryQuery.data?.ordersByStatus ?? {};
@@ -148,7 +150,7 @@ export function DashboardPage({
               Abrir mapa <ArrowRight size={14} />
             </button>
           </div>
-          <LiveMap compact locations={mapLocations} />
+          <LiveMap compact locations={mapLocations} stops={mapStops} />
         </article>
         <article className="panel dispatch-panel">
           <div className="panel-heading">

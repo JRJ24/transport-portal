@@ -585,6 +585,12 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
     prioridad: orderStatus === "PENDING_QUOTE" || orderStatus === "REQUESTED" ? "Alta" : "Normal",
+    // Coordenadas de las paradas: permiten dibujar la orden en el mapa aunque
+    // el conductor todavia no este transmitiendo GPS. 0 = sin dato.
+    origenLat: getNumber(pickup, "latitude") ?? 0,
+    origenLng: getNumber(pickup, "longitude") ?? 0,
+    destinoLat: getNumber(dropoff, "latitude") ?? 0,
+    destinoLng: getNumber(dropoff, "longitude") ?? 0,
   };
 }
 

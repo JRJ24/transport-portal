@@ -1,7 +1,7 @@
+import { useState } from "react";
 import {
   BatteryMedium,
   Clock3,
-  LocateFixed,
   Route,
   Signal,
   TriangleAlert,
@@ -9,8 +9,11 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { LiveMap } from "@/components/LiveMap";
+import { MapZoomControls } from "@/components/map/MapZoomControls";
 import { Button, PageHeader, StatusBadge } from "@/components/ui";
+import { MAP_INSTANCE_IDS } from "@/config/maps.config";
 import { queryKeys } from "@/lib/query-keys";
+import { stopsFromOrders, toLatLng } from "@/lib/maps";
 import { useLiveLocations } from "@/services/realtime.service";
 import {
   mapLiveLocation,
@@ -20,6 +23,7 @@ import {
 } from "@/services/tms.service";
 
 export function MapPage() {
+  const [followOrderId, setFollowOrderId] = useState<string>();
   const ordersQuery = useQuery({
     queryKey: queryKeys.mapOrders(),
     queryFn: () => tmsService.orders(),
@@ -61,6 +65,11 @@ export function MapPage() {
     latestLocationsQuery.data ?? [],
     liveLocations,
   );
+  const stops = stopsFromOrders(orders);
+  const cameraPoints = [
+    ...locations.map(toLatLng),
+    ...stops.map((stop) => stop.position),
+  ].filter((point): point is NonNullable<typeof point> => point !== null);
   const openIncidents = incidentsQuery.data?.length ?? 0;
 
   return (
@@ -81,14 +90,8 @@ export function MapPage() {
       )}
       <section className="map-layout">
         <div className="map-workspace">
-          <LiveMap locations={locations} />
-          <div className="map-controls">
-            <button>
-              <LocateFixed size={17} />
-            </button>
-            <button>+</button>
-            <button>−</button>
-          </div>
+          <LiveMap followOrderId={followOrderId} locations={locations} stops={stops} />
+          <MapZoomControls mapId={MAP_INSTANCE_IDS.fleet} points={cameraPoints} />
           <div className="map-sync">
             <Signal size={14} />{" "}
             {locations.length
@@ -122,25 +125,36 @@ export function MapPage() {
               </div>
               <span>{orders.length}</span>
             </header>
-            {orders.slice(0, 12).map((trip) => (
-              <button key={trip.id}>
-                <div className="trip-icon">
-                  <Truck size={17} />
-                </div>
-                <span>
-                  <strong>{trip.id}</strong>
-                  <small>
-                    {trip.conductor} · {trip.origen} → {trip.destino}
-                  </small>
-                  <em>
-                    <Clock3 size={12} /> ETA {trip.eta}{" "}
-                    <BatteryMedium size={13} />{" "}
-                    {batteryFor(locations, String(trip._id ?? trip.id))}
-                  </em>
-                </span>
-                <StatusBadge>{trip.estado}</StatusBadge>
-              </button>
-            ))}
+            {orders.slice(0, 12).map((trip) => {
+              const tripOrderId = String(trip._id ?? trip.id);
+              const following = followOrderId === tripOrderId;
+
+              return (
+                <button
+                  aria-pressed={following}
+                  key={trip.id}
+                  onClick={() => setFollowOrderId(following ? undefined : tripOrderId)}
+                  title={following ? "Dejar de seguir esta unidad" : "Seguir esta unidad en el mapa"}
+                  type="button"
+                >
+                  <div className="trip-icon">
+                    <Truck size={17} />
+                  </div>
+                  <span>
+                    <strong>{trip.id}</strong>
+                    <small>
+                      {trip.conductor} · {trip.origen} → {trip.destino}
+                    </small>
+                    <em>
+                      <Clock3 size={12} /> ETA {trip.eta}{" "}
+                      <BatteryMedium size={13} />{" "}
+                      {batteryFor(locations, tripOrderId)}
+                    </em>
+                  </span>
+                  <StatusBadge>{trip.estado}</StatusBadge>
+                </button>
+              );
+            })}
           </div>
           <div className="route-alert">
             <Route size={19} />
