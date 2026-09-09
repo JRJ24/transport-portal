@@ -2,7 +2,7 @@
   .stats-grid--six { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .dashboard-primary,.dashboard-secondary,.map-layout { grid-template-columns:1fr; }
   .trip-sidebar { border-top:1px solid var(--line); border-left:0; }
-  .live-map { min-height:430px; }
+  .live-map { height: 430px; min-height:430px; }
 }
 
 @media (max-width:960px) {
