@@ -36,15 +36,29 @@
 
 /* Planificador de ruta: recogida y entrega sobre un solo mapa. */
 .route-planner { display:grid; grid-column:1 / -1; gap:0; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:white; }
-.route-planner>header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; }
+/* z-index sobre el mapa: `.route-planner__map` usa `isolation:isolate` y va despues en el DOM. */
+.route-planner>header { position:relative; z-index:5; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; }
 .route-planner__stops { display:flex; flex:1; flex-wrap:wrap; gap:8px; min-width:0; }
-.route-planner__stop { display:flex; flex:1; min-width:170px; align-items:center; gap:8px; border:1px solid #e6ebf2; border-radius:8px; padding:8px 10px; background:#fbfcfe; text-align:left; }
-.route-planner__stop:hover { border-color:#cbd8ec; background:#f6f9ff; }
-.route-planner__stop[aria-pressed='true'] { border-color:var(--blue); background:#eef4ff; }
-.route-planner__stop i { width:9px; height:9px; flex:0 0 auto; border-radius:50%; }
-.route-planner__stop span { display:grid; min-width:0; gap:2px; }
-.route-planner__stop small { color:#7b8798; font-size:7px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
-.route-planner__stop strong { overflow:hidden; color:#202b3d; font-size:9px; white-space:nowrap; text-overflow:ellipsis; }
+/* Campo de direccion con sugerencias, en el hueco de la antigua fila-boton. */
+.address-field { position:relative; display:grid; flex:1; min-width:190px; gap:3px; }
+.address-field__label { color:#7b8798; font-size:7px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.address-field__control { display:flex; align-items:center; gap:7px; border:1px solid #e6ebf2; border-radius:8px; padding:7px 10px; background:#fbfcfe; }
+.address-field.is-active .address-field__control { border-color:var(--blue); background:#eef4ff; }
+.address-field__dot { width:9px; height:9px; flex:0 0 auto; border-radius:50%; }
+.address-field__input { flex:1; min-width:0; height:auto !important; border:0 !important; padding:0 !important; background:transparent !important; color:#202b3d; font-size:9px; font-weight:750; outline:0; }
+.address-field__action { display:grid; flex:0 0 auto; place-items:center; border:0; background:transparent; color:#7b8798; }
+.address-field__action:hover:not(:disabled) { color:var(--blue); }
+.address-field__action:disabled { opacity:.45; }
+.address-field__spin { flex:0 0 auto; color:#7b8798; animation:address-field-spin .9s linear infinite; }
+@keyframes address-field-spin { to { transform:rotate(360deg); } }
+.address-field__list { position:absolute; top:100%; right:0; left:0; z-index:30; max-height:260px; margin:4px 0 0; padding:3px; overflow-y:auto; border:1px solid var(--line); border-radius:9px; background:white; box-shadow:0 14px 32px rgba(15,23,42,.16); list-style:none; }
+.address-field__option { display:grid; gap:2px; border-radius:6px; padding:8px 10px; cursor:pointer; }
+.address-field__option.is-active { background:#eef4ff; }
+.address-field__option strong { color:#202b3d; font-size:9px; }
+.address-field__option small { color:#7b8798; font-size:8px; font-weight:700; }
+.address-field__status { padding:8px 10px; color:#7b8798; font-size:8px; font-weight:750; }
+.address-field__status.is-error { color:#b91c1c; }
+.address-field__status.is-warning { color:#b45309; }
 .route-planner__toggle { display:flex; align-items:center; gap:5px; border:1px solid #dce3ec; border-radius:999px; padding:7px 12px; background:white; color:var(--blue); font-size:9px; font-weight:800; }
 .route-planner__toggle svg { transition:transform .18s ease; }
 .route-planner.is-open .route-planner__toggle svg { transform:rotate(180deg); }

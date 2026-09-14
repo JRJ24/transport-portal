@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ChevronDown, Crosshair, MapPin, Navigation, Search } from "lucide-react";
+import { ChevronDown, Crosshair, MapPin, Navigation } from "lucide-react";
 import { Polyline } from "@vis.gl/react-google-maps";
-import { toast } from "sonner";
 import {
+  DEFAULT_CENTER,
   MAP_INSTANCE_IDS,
   MAP_TONES,
   ROUTE_STROKE,
@@ -10,6 +10,7 @@ import {
   type LatLngLiteral,
 } from "@/config/maps.config";
 import { tmsService } from "@/services/tms.service";
+import { AddressAutocomplete } from "./AddressAutocomplete";
 import { MapCanvas } from "./MapCanvas";
 import { MapMarker } from "./MapMarker";
 
@@ -55,7 +56,6 @@ export function RoutePlanner({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<StopScope>("origin");
-  const [busy, setBusy] = useState(false);
 
   const stops: Record<StopScope, PlannerStop> = { origin, destination };
   const activeStop = stops[active];
@@ -85,62 +85,34 @@ export function RoutePlanner({
     }
   };
 
-  const locateActiveAddress = async () => {
-    setBusy(true);
-    try {
-      const [match] = await tmsService.geocode(activeStop.address);
-
-      if (!match) {
-        toast.error("No encontramos esa dirección. Marca el punto en el mapa.");
-        return;
-      }
-
-      if (match.provider === "internal-mock") {
-        toast.warning(
-          "Geocodificación simulada: falta GOOGLE_MAPS_SERVER_API_KEY en la API. Marca el punto en el mapa.",
-        );
-        return;
-      }
-
-      setStop(active, {
-        formattedAddress: match.formattedAddress,
-        point: { lat: match.latitude, lng: match.longitude },
-      });
-      toast.success(match.formattedAddress);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No se pudo ubicar la dirección",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <section className={open ? "route-planner is-open" : "route-planner"}>
       <header>
         <div className="route-planner__stops">
           {(["origin", "destination"] as const).map((scope) => (
-            <button
-              aria-pressed={open && active === scope}
-              className="route-planner__stop"
-              key={scope}
-              onClick={() => {
-                setActive(scope);
-                setOpen(true);
-              }}
-              type="button"
-            >
-              <i
-                style={{
-                  background: MAP_TONES[scope === "origin" ? "pickup" : "dropoff"].color,
-                }}
-              />
-              <span>
-                <small>{scope === "origin" ? "Recogida" : "Entrega"}</small>
-                <strong>{stopLabel(stops[scope])}</strong>
-              </span>
-            </button>
+            <AddressAutocomplete
+              active={active === scope}
+              bias={
+                stops[scope].point ??
+                stops[scope === "origin" ? "destination" : "origin"].point ??
+                DEFAULT_CENTER
+              }
+              defaultValue={stops[scope].label ?? ""}
+              // Remonta el campo cuando la parada se fija desde el mapa: es
+              // como React resetea estado, sin efectos de sincronia.
+              key={`${scope}:${stops[scope].label ?? ""}`}
+              label={scope === "origin" ? "Recogida" : "Entrega"}
+              onActivate={() => setActive(scope)}
+              onClear={() => onResolve(scope, { point: null })}
+              onPick={(picked) =>
+                setStop(scope, {
+                  formattedAddress: picked.formattedAddress,
+                  point: picked.point,
+                })
+              }
+              placeholder={scope === "origin" ? "Dónde recogemos" : "A dónde va"}
+              tone={MAP_TONES[scope === "origin" ? "pickup" : "dropoff"].color}
+            />
           ))}
         </div>
         <button
@@ -159,22 +131,13 @@ export function RoutePlanner({
               <MapPin size={13} /> Toca el mapa para fijar{" "}
               <strong>{active === "origin" ? "la recogida" : "la entrega"}</strong>
             </span>
-            <div>
-              <button
-                disabled={busy || !hasText(activeStop.address)}
-                onClick={locateActiveAddress}
-                type="button"
-              >
-                <Search size={12} /> {busy ? "Ubicando..." : "Ubicar dirección escrita"}
-              </button>
-              <button
-                disabled={!activeStop.point}
-                onClick={() => onResolve(active, { point: null })}
-                type="button"
-              >
-                <Crosshair size={12} /> Quitar
-              </button>
-            </div>
+            {activeStop.point && (
+              <div>
+                <button onClick={() => onResolve(active, { point: null })} type="button">
+                  <Crosshair size={12} /> Quitar parada
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="route-planner__map">
@@ -206,8 +169,8 @@ export function RoutePlanner({
 
           <small>
             {hasGoogleMapsKey
-              ? "Elige arriba qué parada estás marcando; la dirección se rellena sola."
-              : "El mapa se activa al configurar la clave browser; «Ubicar dirección escrita» funciona igual."}
+              ? "Escribe arriba para buscar, o toca el mapa para afinar el punto."
+              : "El mapa se activa al configurar la clave browser; el buscador de direcciones funciona igual."}
           </small>
         </div>
       )}
@@ -272,10 +235,3 @@ function RouteLine({
   );
 }
 
-function stopLabel(stop: PlannerStop) {
-  return stop.label ?? (stop.point ? "Marcada en el mapa" : "Sin marcar");
-}
-
-function hasText(value: string) {
-  return value.replace(/[\s,]/g, "").length > 0;
-}

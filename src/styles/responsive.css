@@ -30,7 +30,10 @@
   .map-legend { gap:7px; bottom:10px; left:10px; padding:6px 8px; }
   .map-sync { bottom:10px; right:10px; }
   .route-planner__map { height:min(52vh,320px); }
-  .route-planner__stop { min-width:100%; }
+  .address-field { min-width:100%; }
+  /* Por debajo de 16px Safari iOS hace zoom al enfocar y descoloca el modal. */
+  .address-field__input { font-size:16px; }
+  .address-field__list { max-height:45vh; }
   .route-planner__toggle { width:100%; justify-content:center; }
 }
 

@@ -37,6 +37,13 @@ export interface GeoPointInput {
   longitude: number;
 }
 
+export interface PlaceSuggestionMatch {
+  placeId: string;
+  text: string;
+  mainText?: string;
+  secondaryText?: string;
+}
+
 export interface GeocodeMatch {
   formattedAddress: string;
   latitude: number;
@@ -154,6 +161,47 @@ export const tmsService = {
 
   municipalities(provinceId: string) {
     return getList(`/catalogs/provinces/${provinceId}/municipalities`);
+  },
+
+  /**
+   * Sugerencias de direccion mientras el operador escribe.
+   *
+   * `signal` permite abortar la consulta anterior cuando sigue tecleando.
+   * El body se arma campo a campo: la API valida con `forbidNonWhitelisted`
+   * y cualquier campo extra devuelve 400.
+   */
+  async autocompletePlaces(
+    payload: {
+      input: string;
+      sessionToken: string;
+      locationBias?: GeoPointInput;
+      radiusMeters?: number;
+    },
+    signal?: AbortSignal,
+  ) {
+    const response = await api.post<ApiResponse<AnyRecord>>(
+      "/maps/places/autocomplete",
+      payload,
+      { signal },
+    );
+    const data = unwrapApiResponse(response.data);
+    return {
+      suggestions: asRecordArray(data.suggestions).map(mapPlaceSuggestion),
+      provider: getString(data, "provider") ?? "internal-mock",
+    };
+  },
+
+  /** Sugerencia elegida -> direccion completa y coordenadas. */
+  async placeDetails(placeId: string, sessionToken?: string) {
+    const data = await postData("/maps/places/details", { placeId, sessionToken });
+    const location = asRecord(data.location);
+    return {
+      placeId: getString(data, "placeId") ?? placeId,
+      formattedAddress: getString(data, "formattedAddress") ?? "",
+      latitude: getNumber(location, "latitude") ?? null,
+      longitude: getNumber(location, "longitude") ?? null,
+      provider: getString(data, "provider") ?? "internal-mock",
+    };
   },
 
   /**
@@ -636,6 +684,15 @@ export function mapOrderRow(order: AnyRecord): DataRow {
     origenLng: getNumber(pickup, "longitude") ?? 0,
     destinoLat: getNumber(dropoff, "latitude") ?? 0,
     destinoLng: getNumber(dropoff, "longitude") ?? 0,
+  };
+}
+
+function mapPlaceSuggestion(suggestion: AnyRecord): PlaceSuggestionMatch {
+  return {
+    placeId: getString(suggestion, "placeId") ?? "",
+    text: getString(suggestion, "text") ?? "",
+    mainText: getString(suggestion, "mainText"),
+    secondaryText: getString(suggestion, "secondaryText"),
   };
 }
 
