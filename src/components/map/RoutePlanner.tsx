@@ -9,7 +9,8 @@ import {
   hasGoogleMapsKey,
   type LatLngLiteral,
 } from "@/config/maps.config";
-import { tmsService } from "@/services/tms.service";
+import { toast } from "sonner";
+import { tmsService, type GeocodeComponents } from "@/services/tms.service";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { MapCanvas } from "./MapCanvas";
 import { MapMarker } from "./MapMarker";
@@ -18,6 +19,8 @@ export type StopScope = "origin" | "destination";
 
 export interface ResolvedLocation {
   formattedAddress?: string;
+  /** Provincia/municipio/calle ya separados por el backend, si los trae. */
+  components?: GeocodeComponents;
   point: LatLngLiteral | null;
 }
 
@@ -77,11 +80,35 @@ export function RoutePlanner({
 
     try {
       const [match] = await tmsService.reverseGeocode(point.lat, point.lng);
-      if (match && match.provider !== "internal-mock") {
-        onResolve(scope, { formattedAddress: match.formattedAddress, point });
+
+      if (!match) {
+        toast.warning(
+          "No hay una dirección registrada en ese punto, pero la parada quedó marcada.",
+        );
+        return;
       }
-    } catch {
-      // La parada ya quedo fijada; la direccion legible es un extra.
+
+      // El mock del backend devuelve las propias coordenadas como dirección,
+      // que acabarían escritas en el campo Dirección.
+      if (match.provider === "internal-mock") {
+        toast.warning(
+          "El servidor no tiene Google Maps configurado: escribe la dirección a mano.",
+        );
+        return;
+      }
+
+      onResolve(scope, {
+        formattedAddress: match.formattedAddress,
+        components: match.components,
+        point,
+      });
+    } catch (error) {
+      // La parada ya quedó fijada, pero el fallo no puede quedar en silencio.
+      toast.error(
+        error instanceof Error
+          ? `No pudimos leer la dirección de ese punto: ${error.message}`
+          : "No pudimos leer la dirección de ese punto.",
+      );
     }
   };
 
@@ -211,13 +238,25 @@ function RouteLine({
   route: PlannerRoute | null;
 }) {
   if (route?.polyline) {
+    // Dos trazos: uno inferior más ancho y oscuro que separa la ruta del mapa,
+    // y el azul encima. Es lo que la hace legible sobre cualquier fondo.
     return (
-      <Polyline
-        encodedPath={route.polyline}
-        strokeColor={ROUTE_STROKE.color}
-        strokeOpacity={ROUTE_STROKE.opacity}
-        strokeWeight={ROUTE_STROKE.weight}
-      />
+      <>
+        <Polyline
+          encodedPath={route.polyline}
+          strokeColor={ROUTE_STROKE.casing}
+          strokeOpacity={0.9}
+          strokeWeight={ROUTE_STROKE.weight + 4}
+          zIndex={1}
+        />
+        <Polyline
+          encodedPath={route.polyline}
+          strokeColor={ROUTE_STROKE.color}
+          strokeOpacity={ROUTE_STROKE.opacity}
+          strokeWeight={ROUTE_STROKE.weight}
+          zIndex={2}
+        />
+      </>
     );
   }
 

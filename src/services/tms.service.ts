@@ -44,10 +44,22 @@ export interface PlaceSuggestionMatch {
   secondaryText?: string;
 }
 
+/**
+ * La direccion ya partida por el backend. Opcional: el portal se puede
+ * desplegar antes que la API, y `matchCatalogName` sigue como respaldo.
+ */
+export interface GeocodeComponents {
+  street?: string;
+  sector?: string;
+  municipality?: string;
+  province?: string;
+}
+
 export interface GeocodeMatch {
   formattedAddress: string;
   latitude: number;
   longitude: number;
+  components?: GeocodeComponents;
   /** `internal-mock` = el backend no tiene GOOGLE_MAPS_SERVER_API_KEY. */
   provider: string;
 }
@@ -698,10 +710,20 @@ function mapPlaceSuggestion(suggestion: AnyRecord): PlaceSuggestionMatch {
 
 function mapGeocodeResult(result: AnyRecord): GeocodeMatch {
   const location = asRecord(result.location);
+  // La API parte la direccion en provincia/municipio/calle; buscarlos dentro
+  // del texto formateado falla en cuanto Google lo redacta de otra forma.
+  const components = asRecord(result.components);
+
   return {
     formattedAddress: getString(result, "formattedAddress") ?? "",
     latitude: getNumber(location, "latitude") ?? 0,
     longitude: getNumber(location, "longitude") ?? 0,
+    components: {
+      street: getString(components, "street"),
+      sector: getString(components, "sector"),
+      municipality: getString(components, "municipality"),
+      province: getString(components, "province"),
+    },
     provider: getString(result, "provider") ?? "internal-mock",
   };
 }

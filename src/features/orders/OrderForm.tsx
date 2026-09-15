@@ -18,7 +18,7 @@ import {
   type StopScope,
 } from "@/components/map/RoutePlanner";
 import type { LatLngLiteral } from "@/config/maps.config";
-import { matchCatalogName, pointKey, streetOf, toLatLngFromForm } from "@/lib/maps";
+import { pickCatalogName, pointKey, streetOf, toLatLngFromForm } from "@/lib/maps";
 import { tmsService, type AnyRecord } from "@/services/tms.service";
 
 type FormValues = Record<string, string>;
@@ -68,7 +68,7 @@ export function OrderForm({
   // Direccion cuyo municipio queda por resolver: el catalogo de municipios
   // solo se carga despues de fijar la provincia.
   const [pendingCity, setPendingCity] = useState<
-    Partial<Record<StopScope, string>>
+    Partial<Record<StopScope, { hint?: string; formattedAddress: string }>>
   >({});
   // Direccion legible de cada parada, para las filas del planificador.
   const [stopLabels, setStopLabels] = useState<Partial<Record<StopScope, string>>>({});
@@ -142,14 +142,20 @@ export function OrderForm({
     };
 
     for (const scope of ["origin", "destination"] as const) {
-      const formattedAddress = pendingCity[scope];
+      const pending = pendingCity[scope];
       const municipalities = catalogOptions(catalogs[scope]);
 
-      if (!formattedAddress || municipalities.length === 0) {
+      if (!pending || municipalities.length === 0) {
         continue;
       }
 
-      const municipality = matchCatalogName(formattedAddress, municipalities);
+      // El componente estructurado resuelve tambien los casos en que la
+      // direccion formateada no menciona el municipio, habituales en RD.
+      const municipality = pickCatalogName(
+        pending.hint,
+        pending.formattedAddress,
+        municipalities,
+      );
       setPendingCity((current) => ({ ...current, [scope]: undefined }));
 
       if (!municipality) {
@@ -262,7 +268,10 @@ export function OrderForm({
    * Latitud y longitud viven en `values` pero ya no se muestran: el operador
    * trabaja sobre el mapa. Cambiar una parada invalida la ruta y la cotizacion.
    */
-  const resolveLocation = (scope: StopScope, { formattedAddress, point }: ResolvedLocation) => {
+  const resolveLocation = (
+    scope: StopScope,
+    { components, formattedAddress, point }: ResolvedLocation,
+  ) => {
     setStopLabels((current) => ({
       ...current,
       [scope]: point ? (formattedAddress ?? current[scope]) : undefined,
@@ -271,7 +280,11 @@ export function OrderForm({
       ...current,
       [`${scope}Latitude`]: point ? point.lat.toFixed(6) : "",
       [`${scope}Longitude`]: point ? point.lng.toFixed(6) : "",
-      ...(formattedAddress ? { [`${scope}Address`]: streetOf(formattedAddress) } : {}),
+      ...(components?.street
+        ? { [`${scope}Address`]: components.street }
+        : formattedAddress
+          ? { [`${scope}Address`]: streetOf(formattedAddress) }
+          : {}),
     }));
     setRouteInfo(null);
     setQuotePreview(null);
@@ -284,13 +297,21 @@ export function OrderForm({
     });
 
     if (formattedAddress) {
-      applyGeocodedCatalogs(scope, formattedAddress);
+      applyGeocodedCatalogs(scope, formattedAddress, components);
     }
   };
 
   /** Provincia y municipio deducidos de la direccion que devolvio Google. */
-  const applyGeocodedCatalogs = (scope: StopScope, formattedAddress: string) => {
-    const province = matchCatalogName(formattedAddress, catalogOptions(provinces));
+  const applyGeocodedCatalogs = (
+    scope: StopScope,
+    formattedAddress: string,
+    components?: ResolvedLocation["components"],
+  ) => {
+    const province = pickCatalogName(
+      components?.province,
+      formattedAddress,
+      catalogOptions(provinces),
+    );
     if (!province) {
       return;
     }
@@ -306,7 +327,10 @@ export function OrderForm({
             [`${scope}City`]: "",
           },
     );
-    setPendingCity((current) => ({ ...current, [scope]: formattedAddress }));
+    setPendingCity((current) => ({
+      ...current,
+      [scope]: { hint: components?.municipality, formattedAddress },
+    }));
   };
 
   const selectCustomer = (customer: AnyRecord) => {

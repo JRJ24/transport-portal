@@ -23,8 +23,15 @@ export const hasGoogleMapsMapId = googleMapsMapId.length > 0;
 export const MAPS_LANGUAGE = "es";
 export const MAPS_REGION = "DO";
 
-/** Librerias que el portal necesita cargar junto al script base. */
-export const MAPS_LIBRARIES = ["marker"];
+/**
+ * Librerias que el portal necesita cargar junto al script base.
+ *
+ * `geometry` no es opcional: `<Polyline encodedPath>` decodifica la
+ * polilinea con `google.maps.geometry.encoding`, y sin esa libreria el
+ * componente no dibuja nada y tampoco da error. La ruta real del
+ * planificador llevaba tiempo sin pintarse por eso.
+ */
+export const MAPS_LIBRARIES = ["marker", "geometry"];
 
 /** Centro por defecto: Santo Domingo, Distrito Nacional. */
 export const DEFAULT_CENTER: LatLngLiteral = { lat: 18.4861, lng: -69.9312 };
@@ -66,6 +73,8 @@ export const ROUTE_STROKE = {
   color: "#2463eb",
   opacity: 0.9,
   weight: 5,
+  /** Trazo inferior, mas ancho y oscuro, para que la ruta destaque. */
+  casing: "#1e3a8a",
 };
 
 /** Paleta de marcadores por tipo de punto. */

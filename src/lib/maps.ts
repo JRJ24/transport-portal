@@ -165,3 +165,44 @@ export function matchCatalogName<T extends { id: string; name: string }>(
     .filter((option) => option.name && haystack.includes(foldName(option.name)))
     .sort((left, right) => right.name.length - left.name.length)[0];
 }
+
+/** Prefijos con los que Google a veces adorna el nombre de una division. */
+const CATALOG_PREFIXES = [
+  "provincia de ",
+  "provincia ",
+  "municipio de ",
+  "municipio ",
+];
+
+/**
+ * Entrada de catalogo a partir del componente estructurado que devuelve la API,
+ * con la direccion formateada como respaldo.
+ *
+ * Comparar nombre contra nombre acierta tambien cuando Google redacta la
+ * direccion de otra forma; buscar la subcadena solo se usa si no hay componente
+ * o no casa.
+ */
+export function pickCatalogName<T extends { id: string; name: string }>(
+  candidate: string | null | undefined,
+  formattedAddress: string,
+  options: T[],
+): T | undefined {
+  if (candidate) {
+    let needle = foldName(candidate);
+
+    for (const prefix of CATALOG_PREFIXES) {
+      if (needle.startsWith(prefix)) {
+        needle = needle.slice(prefix.length).trim();
+        break;
+      }
+    }
+
+    const exact = options.find((option) => foldName(option.name) === needle);
+
+    if (exact) {
+      return exact;
+    }
+  }
+
+  return matchCatalogName(formattedAddress, options);
+}
