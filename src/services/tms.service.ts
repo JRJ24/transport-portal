@@ -48,6 +48,19 @@ export interface PlaceSuggestionMatch {
  * La direccion ya partida por el backend. Opcional: el portal se puede
  * desplegar antes que la API, y `matchCatalogName` sigue como respaldo.
  */
+/** Precio y capacidad de una categoria, para comparar antes de elegir. */
+export interface QuoteOption {
+  vehicleCategoryId: string;
+  code: string;
+  name: string;
+  maxWeightKg: number;
+  maxVolumenM3: number;
+  /** Nulo cuando la categoria no tiene tarifa vigente. */
+  totalAmount: number | null;
+  fits: boolean;
+  unavailable?: string;
+}
+
 export interface GeocodeComponents {
   street?: string;
   sector?: string;
@@ -246,6 +259,32 @@ export const tmsService = {
       polyline: getString(route, "polyline") ?? "",
       provider: getString(route, "provider") ?? "internal-mock",
     };
+  },
+
+  /**
+   * Precio de cada categoria para la ruta y la carga actuales.
+   *
+   * No persiste nada, asi que alimenta las tarjetas mientras el operador
+   * todavia no ha elegido categoria. La cotizacion que se cobra sigue saliendo
+   * de `previewManualQuote` / la creacion de la orden.
+   */
+  async quoteOptions(
+    input: {
+      distanceKm: number;
+      estimatedDurationMin: number;
+      weightKg?: number;
+      volumeM3?: number;
+      quantity?: number;
+      requireHelper?: boolean;
+    },
+    signal?: AbortSignal,
+  ) {
+    const response = await api.post<ApiResponse<AnyRecord[]>>(
+      "/pricing/quote-options",
+      input,
+      { signal },
+    );
+    return unwrapApiResponse(response.data).map(mapQuoteOption);
   },
 
   previewManualQuote(values: Record<string, string>) {
@@ -705,6 +744,19 @@ function mapPlaceSuggestion(suggestion: AnyRecord): PlaceSuggestionMatch {
     text: getString(suggestion, "text") ?? "",
     mainText: getString(suggestion, "mainText"),
     secondaryText: getString(suggestion, "secondaryText"),
+  };
+}
+
+function mapQuoteOption(option: AnyRecord): QuoteOption {
+  return {
+    vehicleCategoryId: getString(option, "vehicleCategoryId") ?? "",
+    code: getString(option, "code") ?? "",
+    name: getString(option, "name") ?? "",
+    maxWeightKg: getNumber(option, "maxWeightKg") ?? 0,
+    maxVolumenM3: getNumber(option, "maxVolumenM3") ?? 0,
+    totalAmount: getNumber(option, "totalAmount") ?? null,
+    fits: option.fits === true,
+    unavailable: getString(option, "unavailable"),
   };
 }
 

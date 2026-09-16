@@ -75,3 +75,38 @@
 .route-planner>footer { display:flex; flex-wrap:wrap; align-items:center; gap:4px 9px; border-top:1px solid var(--line); padding:10px 13px; background:#f5f9ff; color:#41506a; }
 .route-planner>footer strong { color:#1c2638; font-size:12px; }
 .route-planner>footer span { flex:1; min-width:170px; color:#7b8798; font-size:9px; font-weight:700; }
+
+/* ==========================================================================
+   Tarjetas de categoria (modal de orden)
+   ==========================================================================
+   Sustituyen al desplegable: con el precio de cada categoria delante, el
+   operador compara de un vistazo en vez de elegir a ciegas y cotizar despues.
+   Mas densas que las del portal de clientes, que es lo que pide un modal de
+   despacho.
+
+   Los colores van explicitos, como el resto del modal: la cascara del portal
+   es oscura y el modal es claro, asi que heredar el color del documento deja
+   texto claro sobre tarjeta blanca.
+   -------------------------------------------------------------------------- */
+
+.vehicle-list { display:grid; gap:6px; }
+.vehicle-card { display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #dce3ec; border-radius:8px; padding:9px 11px; background:white; color:#1d293b; cursor:pointer; text-align:left; }
+.vehicle-card:hover:not(:disabled) { border-color:#b9c9e4; }
+.vehicle-card.is-active { border-color:#cfe1ff; background:#eff6ff; }
+.vehicle-card.is-disabled { cursor:not-allowed; opacity:.5; }
+.vehicle-card__main { display:grid; gap:2px; min-width:0; }
+.vehicle-card__main strong { color:#1d2f54; font-size:11px; }
+.vehicle-card__main small { color:#748095; font-size:9px; }
+.vehicle-card__price { flex:none; color:#1d2f54; font-size:13px; font-weight:800; }
+
+/* --- disclosure de campos secundarios ------------------------------------- */
+
+.disclosure { grid-column:1 / -1; border:1px solid #dce3ec; border-radius:8px; background:white; }
+.disclosure>summary { padding:10px 11px; color:var(--blue); cursor:pointer; font-size:10px; font-weight:800; list-style:none; }
+.disclosure>summary::-webkit-details-marker { display:none; }
+/* Triangulo dibujado con bordes: no todas las fuentes del portal traen el
+   glifo del chevron, y salia como un recuadro vacio. */
+.disclosure>summary::after { display:inline-block; width:0; height:0; margin-left:6px; border-top:4px solid transparent; border-bottom:4px solid transparent; border-left:5px solid currentcolor; content:""; transition:transform .15s; vertical-align:middle; }
+.disclosure[open]>summary::after { transform:rotate(90deg); }
+.disclosure__body { border-top:1px solid #e6ebf2; padding:12px; }
+.form-hint { margin:0; color:#738096; font-size:10px; }

@@ -19,7 +19,11 @@ import {
 } from "@/components/map/RoutePlanner";
 import type { LatLngLiteral } from "@/config/maps.config";
 import { pickCatalogName, pointKey, streetOf, toLatLngFromForm } from "@/lib/maps";
-import { tmsService, type AnyRecord } from "@/services/tms.service";
+import {
+  tmsService,
+  type AnyRecord,
+  type QuoteOption,
+} from "@/services/tms.service";
 
 type FormValues = Record<string, string>;
 type SubmitMode = "DRAFT" | "CREATE_AND_QUOTE";
@@ -65,6 +69,10 @@ export function OrderForm({
   const [quotePreview, setQuotePreview] = useState<AnyRecord | null>(null);
   const [routeInfo, setRouteInfo] = useState<PlannerRoute | null>(null);
   const [manualRoute, setManualRoute] = useState(false);
+  // Precio por categoria para la ruta y la carga actuales. No es una
+  // cotizacion: la real la sigue calculando `previewManualQuote`.
+  const [quoteOptions, setQuoteOptions] = useState<QuoteOption[]>([]);
+  const [loadDetailsOpen, setLoadDetailsOpen] = useState(false);
   // Direccion cuyo municipio queda por resolver: el catalogo de municipios
   // solo se carga despues de fijar la provincia.
   const [pendingCity, setPendingCity] = useState<
@@ -179,6 +187,70 @@ export function OrderForm({
     originMunicipalitiesQuery.data,
     pendingCity,
   ]);
+
+  // Precio de cada categoria. Depende de la ruta y de la carga, no de la
+  // categoria elegida: son justamente los numeros con los que se elige, asi
+  // que esta llamada corre antes de que haya una seleccionada.
+  const optionsSignature = (() => {
+    const distanceKm = Number(values.distanceKm);
+
+    if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+      return "";
+    }
+
+    return JSON.stringify({
+      distanceKm,
+      estimatedDurationMin: readNumber(values.estimatedDurationMin) ?? 0,
+      weightKg: readNumber(values.itemWeightKg),
+      volumeM3: readNumber(values.itemVolumeM3),
+      quantity: Math.max(1, Math.round(readNumber(values.itemQuantity) ?? 1)),
+      requireHelper: values.itemRequireHelper === "true",
+    });
+  })();
+
+  useEffect(() => {
+    if (!optionsSignature) {
+      setQuoteOptions([]);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const input = JSON.parse(optionsSignature) as Parameters<
+      typeof tmsService.quoteOptions
+    >[0];
+    const timer = setTimeout(() => {
+      tmsService
+        .quoteOptions(input, controller.signal)
+        .then((options) => {
+          if (!controller.signal.aborted) {
+            setQuoteOptions(options);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setQuoteOptions([]);
+          }
+        });
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [optionsSignature]);
+
+  // Si la carga crece y la categoria elegida deja de admitirla, se suelta la
+  // eleccion: dejarla puesta cotizaba un vehiculo imposible.
+  useEffect(() => {
+    const selected = quoteOptions.find(
+      (option) => option.vehicleCategoryId === values.vehicleCategoryId,
+    );
+
+    if (selected && !selected.fits) {
+      setValues((current) => ({ ...current, vehicleCategoryId: "" }));
+      toast.warning(`${selected.name} ya no admite esa carga.`);
+    }
+  }, [quoteOptions, values.vehicleCategoryId]);
 
   /**
    * Distancia y duracion reales de la ruta, para alimentar la cotizacion.
@@ -378,9 +450,21 @@ export function OrderForm({
 
   const focusFirstError = (nextErrors: Record<string, string>) => {
     const first = Object.keys(nextErrors)[0];
-    if (first) {
-      document.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
+
+    if (!first) {
+      return;
     }
+
+    // Los campos opcionales viven en un `<details>` plegado; sin abrirlo el
+    // nodo no esta montado y el foco se pierde en silencio.
+    if (LOAD_DETAIL_FIELDS.has(first)) {
+      setLoadDetailsOpen(true);
+    }
+
+    // Tras abrirlo, el input existe recien en el siguiente frame.
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
+    });
   };
 
   const previewQuote = async () => {
@@ -556,42 +640,6 @@ export function OrderForm({
                 <small className="field-error">{errors.scheduleAt}</small>
               )}
             </label>
-            <label className="span-2">
-              <span>Categoría de vehículo</span>
-              <select
-                name="vehicleCategoryId"
-                value={values.vehicleCategoryId ?? ""}
-                onChange={(event) =>
-                  setField("vehicleCategoryId", event.target.value)
-                }
-              >
-                <option value="">Seleccionar categoría</option>
-                    {categories.map((category) => (
-                      <option key={String(category.id)} value={String(category.id)}>
-                        {categoryOptionLabel(category)}
-                      </option>
-                    ))}
-              </select>
-              {errors.vehicleCategoryId && (
-                <small className="field-error">
-                  {errors.vehicleCategoryId}
-                </small>
-              )}
-            </label>
-            {selectedCategory && (
-              <div className="selected-card span-2">
-                <span>
-                  <strong>
-                    {String(selectedCategory.name ?? "Categoría seleccionada")}
-                  </strong>
-                  <small>
-                    Peso máx. {String(selectedCategory.maxWeightKg ?? "--")} kg
-                    · Volumen máx.{" "}
-                    {String(selectedCategory.maxVolumenM3 ?? "--")} m³
-                  </small>
-                </span>
-              </div>
-            )}
           </div>
         </section>
 
@@ -702,6 +750,22 @@ export function OrderForm({
                 <small className="field-error">{errors.itemWeightKg}</small>
               )}
             </label>
+          </div>
+
+          {/*
+            Volumen, valor declarado, frágil, ayudante y notas son minoritarios
+            en el día a día de despacho. Plegados, la carga cabe de un vistazo
+            sin perder ningún campo.
+          */}
+          <details
+            className="disclosure"
+            id="load-details"
+            open={loadDetailsOpen}
+            onToggle={(event) => setLoadDetailsOpen(event.currentTarget.open)}
+          >
+            <summary>Más detalles de la carga</summary>
+            <div className="disclosure__body">
+              <div className="form-grid">
             <label>
               <span>Volumen m³ (opcional)</span>
               <input
@@ -758,7 +822,83 @@ export function OrderForm({
                 placeholder="Instrucciones de acceso, horario, cuidado especial..."
               />
             </label>
-          </div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        {/*
+          La categoría va después de la carga: sin saber qué se transporta no se
+          puede saber qué vehículo cabe. Con tarjetas el operador compara precio
+          y capacidad de un vistazo, cosa que el desplegable no permitía.
+        */}
+        <section className="form-section span-2">
+          <header className="section-title">
+            <div>
+              <strong>Categoría de vehículo</strong>
+              <span>
+                Precio por categoría para esta ruta y esta carga. Las que no
+                admiten el envío quedan deshabilitadas.
+              </span>
+            </div>
+          </header>
+
+          {quoteOptions.length === 0 ? (
+            <p className="form-hint">
+              Marca las dos paradas y el peso de la carga para ver los precios.
+            </p>
+          ) : (
+            <div
+              className="vehicle-list"
+              role="radiogroup"
+              aria-label="Categoría de vehículo"
+            >
+              {quoteOptions.map((option) => {
+                const selected =
+                  option.vehicleCategoryId === values.vehicleCategoryId;
+
+                return (
+                  <button
+                    aria-checked={selected}
+                    className={`vehicle-card${selected ? " is-active" : ""}${
+                      option.fits ? "" : " is-disabled"
+                    }`}
+                    disabled={!option.fits}
+                    key={option.vehicleCategoryId}
+                    onClick={() =>
+                      setField("vehicleCategoryId", option.vehicleCategoryId)
+                    }
+                    role="radio"
+                    type="button"
+                  >
+                    <span className="vehicle-card__main">
+                      <strong>{option.name}</strong>
+                      <small>
+                        {option.code} · hasta {option.maxWeightKg} kg ·{" "}
+                        {option.maxVolumenM3} m³
+                      </small>
+                      {option.fits ? null : (
+                        <small>
+                          {option.unavailable === "NO_RATE"
+                            ? "Sin tarifa configurada"
+                            : `Supera ${option.maxWeightKg} kg`}
+                        </small>
+                      )}
+                    </span>
+                    <span className="vehicle-card__price">
+                      {option.totalAmount === null
+                        ? "--"
+                        : formatMoney(option.totalAmount)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {errors.vehicleCategoryId && (
+            <small className="field-error">{errors.vehicleCategoryId}</small>
+          )}
         </section>
 
         <section className="form-section span-2">
@@ -1487,17 +1627,6 @@ function customerMeta(customer: AnyRecord) {
     .join(" · ");
 }
 
-function categoryOptionLabel(category: AnyRecord) {
-  return [
-    String(category.name ?? "Categoría"),
-    String(category.code ?? ""),
-    category.maxWeightKg ? `${String(category.maxWeightKg)} kg` : "",
-    category.maxVolumenM3 ? `${String(category.maxVolumenM3)} m³` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
 function getQuoteNumber(quote: AnyRecord, key: string) {
   const value = quote[key];
   const parsed =
@@ -1506,6 +1635,24 @@ function getQuoteNumber(quote: AnyRecord, key: string) {
       : Number.NaN;
 
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Numero de un campo, o `undefined` si todavia no lo es.
+ *
+ * Se usa en el cuerpo del render para armar la clave del efecto de precios: una
+ * excepcion ahi dejaria el modal en blanco a medio teclear.
+ */
+/** Campos de carga que estan detras del disclosure «Mas detalles». */
+const LOAD_DETAIL_FIELDS = new Set(["itemVolumeM3", "itemDeclaredValue"]);
+
+function readNumber(value: string | undefined): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function formatMoney(value: number) {
