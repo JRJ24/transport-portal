@@ -46,7 +46,7 @@ export interface FormField {
   name: string;
   label: string;
   placeholder?: string;
-  type?: "text" | "email" | "password" | "number" | "date" | "time" | "select" | "textarea";
+  type?: "text" | "email" | "password" | "number" | "money" | "date" | "time" | "select" | "textarea";
   options?: Array<string | { label: string; value: string }>;
   required?: boolean;
 }

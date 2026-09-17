@@ -38,6 +38,8 @@ export interface AddressAutocompleteProps {
   placeholder?: string;
   /** Color del punto de la parada. */
   tone?: string;
+  /** Que hacer cuando no hay resultados o la direccion no se pudo resolver. */
+  fallbackHint?: string;
 }
 
 type Status = "idle" | "loading" | "ready" | "empty" | "error" | "resolving";
@@ -66,6 +68,7 @@ export function AddressAutocomplete({
   onUseMyLocation,
   placeholder,
   tone,
+  fallbackHint = "Toca el mapa para marcar la parada.",
 }: AddressAutocompleteProps) {
   const fieldId = useId();
   const [query, setQuery] = useState(defaultValue);
@@ -167,7 +170,15 @@ export function AddressAutocomplete({
       const resolved = await resolvePlace({ placeId: hit.placeId, sessionToken: token });
 
       if (resolved.mock || !resolved.point) {
+        // Sin coordenadas no hay parada. Dejar el texto escrito haria creer al
+        // usuario que la fijo, cuando el padre no recibio nada: se limpia el
+        // campo y se le avisa para que no conserve una parada a medias.
+        setQuery("");
+        setPickedTerm("");
+        setHits([]);
         setStatus("error");
+        setOpen(true);
+        onClear?.();
         return;
       }
 
@@ -272,20 +283,18 @@ export function AddressAutocomplete({
         <ul className="address-field__list" id={`${fieldId}-list`} role="listbox">
           {mock ? (
             <li className="address-field__status is-warning">
-              Sugerencias simuladas: la API no tiene Places real. Marca el punto en el mapa.
+              Sugerencias simuladas: la API no tiene Places real. {fallbackHint}
             </li>
           ) : null}
           {status === "loading" ? (
             <li className="address-field__status">Buscando direcciones...</li>
           ) : null}
           {status === "empty" ? (
-            <li className="address-field__status">
-              Sin resultados. Toca el mapa para marcar la parada.
-            </li>
+            <li className="address-field__status">Sin resultados. {fallbackHint}</li>
           ) : null}
           {status === "error" ? (
             <li className="address-field__status is-error">
-              No se pudo resolver la direccion. Toca el mapa para marcar la parada.
+              No se pudo resolver la direccion. {fallbackHint}
             </li>
           ) : null}
           {hits.map((hit, index) => (

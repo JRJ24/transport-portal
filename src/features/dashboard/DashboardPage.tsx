@@ -20,6 +20,7 @@ import {
   type LiveLocation,
 } from "@/services/tms.service";
 import type { ModuleKey } from "@/types/domain";
+import { formatMoney } from "@/lib/money";
 
 export function DashboardPage({
   onNavigate,
@@ -197,7 +198,7 @@ export function DashboardPage({
                 </span>
                 <StatusBadge>{order.estado}</StatusBadge>
                 <span>{order.eta}</span>
-                <b>RD$ {Number(order.precio).toLocaleString("es-DO")}</b>
+                <b>{formatMoney(order.precio as number | string | null)}</b>
               </button>
             ))}
           </div>

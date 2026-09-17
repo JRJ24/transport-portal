@@ -8,6 +8,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
 import { tmsService } from "@/services/tms.service";
 import type { Column, DataRow, FilterConfig, FormField, Stat, Tone } from "@/types/domain";
+import { formatMoney } from "@/lib/money";
 
 export function Button({ children, variant = "primary", className = "", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
   return <button className={`button button--${variant} ${className}`} {...props}>{children}</button>;
@@ -68,7 +69,7 @@ export function DataTable({ columns, rows, onView, onEdit, onDelete }: { columns
               <tr key={row.id} onDoubleClick={() => onView(row)}>
                 {columns.map((column) => {
                   const value = row[column.key];
-                  return <td key={column.key}>{column.type === "status" ? <StatusBadge>{value}</StatusBadge> : column.type === "money" ? `RD$ ${Number(value).toLocaleString("es-DO")}` : column.type === "strong" ? <strong>{value}</strong> : value}</td>;
+                  return <td key={column.key}>{column.type === "status" ? <StatusBadge>{value}</StatusBadge> : column.type === "money" ? formatMoney(value as number | string | null) : column.type === "strong" ? <strong>{value}</strong> : value}</td>;
                 })}
                 <td className="row-action">
                   <TableActionsMenu row={row} open={menu === row.id} onOpenChange={(open) => setMenu(open ? row.id : null)} onView={onView} onEdit={onEdit} onDelete={onDelete} />
@@ -144,7 +145,7 @@ type FormValues = Record<string, string>;
 
 export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit, onCancel }: { fields: FormField[]; initial?: DataRow; submitLabel?: string; onSubmit: (values: FormValues) => void; onCancel: () => void }) {
   const shape = useMemo(() => Object.fromEntries(fields.map((field) => {
-    const base = field.type === "email" ? z.string().email("Correo inválido") : z.string();
+    const base = field.type === "email" ? z.string().email("Correo inválido") : field.type === "money" ? z.string().regex(/^\d+(\.\d{1,2})?$/, "Monto inválido: usa hasta dos decimales") : z.string();
     return [field.name, field.required === false ? z.union([base, z.literal("")]).optional() : base.min(1, "Este campo es requerido")];
   })), [fields]);
   const schema = useMemo(() => z.object(shape), [shape]);
@@ -153,7 +154,7 @@ export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit,
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <div className="form-grid">
-        {fields.map((field) => <label key={field.name} className={field.type === "textarea" ? "span-2" : ""}><span>{field.label}{field.required === false ? " (opcional)" : ""}</span>{field.type === "select" ? <select {...register(field.name)}><option value="">Seleccionar</option>{field.options?.map((option) => { const normalized = normalizeOption(option); return <option key={normalized.value} value={normalized.value}>{normalized.label}</option>; })}</select> : field.type === "textarea" ? <textarea rows={3} placeholder={field.placeholder} {...register(field.name)} /> : <input type={field.type ?? "text"} placeholder={field.placeholder} {...register(field.name)} />}{errors[field.name] && <small className="field-error">{String(errors[field.name]?.message)}</small>}</label>)}
+        {fields.map((field) => <label key={field.name} className={field.type === "textarea" ? "span-2" : ""}><span>{field.label}{field.required === false ? " (opcional)" : ""}</span>{field.type === "select" ? <select {...register(field.name)}><option value="">Seleccionar</option>{field.options?.map((option) => { const normalized = normalizeOption(option); return <option key={normalized.value} value={normalized.value}>{normalized.label}</option>; })}</select> : field.type === "textarea" ? <textarea rows={3} placeholder={field.placeholder} {...register(field.name)} /> : field.type === "money" ? <input type="number" step="0.01" min="0" inputMode="decimal" placeholder={field.placeholder} {...register(field.name)} /> : <input type={field.type ?? "text"} placeholder={field.placeholder} {...register(field.name)} />}{errors[field.name] && <small className="field-error">{String(errors[field.name]?.message)}</small>}</label>)}
       </div>
       <div className="form-summary"><span><Check size={16} /> Validación automática activa</span><strong>Los cambios quedarán registrados en auditoría.</strong></div>
       <footer className="modal-actions"><Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Guardando..." : submitLabel}</Button></footer>

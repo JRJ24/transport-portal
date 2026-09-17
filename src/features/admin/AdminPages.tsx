@@ -33,6 +33,7 @@ import {
   type AnyRecord,
   type ReportFormat,
 } from "@/services/tms.service";
+import { formatMoney } from "@/lib/money";
 
 const exportButtons: Array<{
   label: string;
@@ -104,7 +105,7 @@ export function ReportsPage() {
         <StatCard
           stat={{
             label: "Ingresos",
-            value: `RD$ ${revenue.toLocaleString("es-DO")}`,
+            value: formatMoney(revenue),
             helper: `Últimos ${range} días`,
             tone: "slate",
           }}
@@ -215,7 +216,7 @@ export function ReportsPage() {
         <div>
           <span>Pagos</span>
           <strong>{paymentGroups.length} estados</strong>
-          <em className="positive">RD$ {revenue.toLocaleString("es-DO")}</em>
+          <em className="positive">{formatMoney(revenue)}</em>
           <StatusBadge>Billing</StatusBadge>
         </div>
       </section>

@@ -2,6 +2,7 @@ import { api } from "@/lib/axios";
 import { unwrapApiResponse } from "@/lib/api-response";
 import type { ApiResponse } from "@/types/api.types";
 import type { DataRow, ModuleKey } from "@/types/domain";
+import { formatMoney } from "@/lib/money";
 
 export type AnyRecord = Record<string, unknown>;
 export type QueryParams = Record<
@@ -1213,11 +1214,7 @@ function formatDateTime(value: string | undefined) {
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("es-DO", {
-    currency: "DOP",
-    maximumFractionDigits: 0,
-    style: "currency",
-  }).format(value);
+  return formatMoney(value);
 }
 
 function asRecord(value: unknown): AnyRecord | undefined {

@@ -24,6 +24,7 @@ import {
   type AnyRecord,
   type QuoteOption,
 } from "@/services/tms.service";
+import { formatMoney } from "@/lib/money";
 
 type FormValues = Record<string, string>;
 type SubmitMode = "DRAFT" | "CREATE_AND_QUOTE";
@@ -1653,13 +1654,6 @@ function readNumber(value: string | undefined): number | undefined {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("es-DO", {
-    style: "currency",
-    currency: "DOP",
-  }).format(value);
 }
 
 function asRecord(value: unknown): AnyRecord | undefined {

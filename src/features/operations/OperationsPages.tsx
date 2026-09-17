@@ -28,6 +28,7 @@ import {
   tmsService,
   type AnyRecord,
 } from "@/services/tms.service";
+import { formatMoney } from "@/lib/money";
 
 const activeFilter = [
   {
@@ -204,7 +205,7 @@ export function RatesPage() {
             <div key={row.id}>
               <span>{row.vehiculo}</span>
               <strong>
-                RD$ {Number(row.base).toLocaleString("es-DO")} · {row.km}/km ·{" "}
+                {formatMoney(row.base as number | string | null)} · {row.km}/km ·{" "}
                 {row.minuto}/min
               </strong>
             </div>

@@ -20,6 +20,7 @@ import {
   type AnyRecord,
 } from "@/services/tms.service";
 import type { DataRow, FormField, ModuleConfig, Stat } from "@/types/domain";
+import { formatMoney } from "@/lib/money";
 
 export function ModulePage({ config }: { config: ModuleConfig }) {
   const queryClient = useQueryClient();
@@ -476,7 +477,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       const receipt = await tmsService.paymentReceipt(selectedPaymentId) as AnyRecord;
       const status = String(receipt.status ?? selectedPaymentStatus ?? "--");
       const amount = Number(receipt.amount ?? selected?.precio ?? 0);
-      toast.success(`Recibo ${status} · RD$ ${amount.toLocaleString("es-DO")}`);
+      toast.success(`Recibo ${status} · ${formatMoney(amount)}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cargar el recibo");
     } finally {
@@ -740,7 +741,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
             </label>
             <label className="span-2">
               <span>Monto</span>
-              <input min="1" type="number" value={checkValues.amount} onChange={(event) => setCheckValues((current) => ({ ...current, amount: event.target.value }))} />
+              <input min="1" step="0.01" inputMode="decimal" type="number" value={checkValues.amount} onChange={(event) => setCheckValues((current) => ({ ...current, amount: event.target.value }))} />
             </label>
             <label className="span-2">
               <span>Notas</span>
@@ -763,7 +764,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
           <div className="form-grid">
             <label className="span-2">
               <span>Monto</span>
-              <input min="1" type="number" value={creditApprovalValues.amount} onChange={(event) => setCreditApprovalValues((current) => ({ ...current, amount: event.target.value }))} />
+              <input min="1" step="0.01" inputMode="decimal" type="number" value={creditApprovalValues.amount} onChange={(event) => setCreditApprovalValues((current) => ({ ...current, amount: event.target.value }))} />
             </label>
             <label className="span-2">
               <span>Notas</span>
@@ -786,7 +787,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
           <div className="form-grid">
             <label>
               <span>Limite</span>
-              <input min="0" type="number" value={creditValues.creditLimit} onChange={(event) => setCreditValues((current) => ({ ...current, creditLimit: event.target.value }))} />
+              <input min="0" step="0.01" inputMode="decimal" type="number" value={creditValues.creditLimit} onChange={(event) => setCreditValues((current) => ({ ...current, creditLimit: event.target.value }))} />
             </label>
             <label>
               <span>Dias</span>
