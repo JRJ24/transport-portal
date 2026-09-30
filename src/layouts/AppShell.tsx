@@ -129,6 +129,24 @@ export function AppShell({
       });
       void queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     });
+    // Despacho automatico H3: ofertas en curso y ordenes que requieren a un operador.
+    const refreshDispatch = () => {
+      void queryClient.invalidateQueries({ queryKey: ["dispatch"] });
+      void queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] });
+    };
+    socket.on("offer.updated", refreshDispatch);
+    socket.on("matching.status", refreshDispatch);
+    socket.on("matching.alert", (payload: { orderId?: string; alerts?: string[] }) => {
+      refreshDispatch();
+      const exhausted = payload.alerts?.some((alert) =>
+        ["NO_CANDIDATES", "CASCADE_EXHAUSTED"].includes(alert),
+      );
+      if (exhausted) {
+        toast.warning("Orden sin conductor cercano", {
+          description: "Requiere asignacion manual desde Ordenes.",
+        });
+      }
+    });
     socket.on("incident.created", refreshIncidents);
     socket.on("incident.updated", refreshIncidents);
     socket.on("notification.created", refreshNotifications);

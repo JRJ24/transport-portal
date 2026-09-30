@@ -33,6 +33,66 @@ export interface LiveLocation {
   receivedAt: string;
 }
 
+/** Fila del ranking de despacho (GET /dispatch/orders/:id/candidates). */
+export interface RankedCandidate {
+  rank: number;
+  driverId: string;
+  driverName: string | null;
+  vehicleId: string;
+  plateNumber: string | null;
+  vehicleCategoryId: string;
+  etaSeconds: number | null;
+  etaStatus: "OK" | "NO_ROUTE" | "FAILED";
+  roadDistanceMeters: number | null;
+  straightLineMeters: number;
+  positionAgeSec: number;
+  positionObservedAt: string;
+  accuracyM: number | null;
+  h3Cell: string;
+  ring: number;
+  score: number;
+  scoreBreakdown: { eta: number; distance: number; reliability: number; balance: number };
+  rating: number;
+  acceptanceRate: number | null;
+  tripsToday: number;
+}
+
+export interface ExcludedCandidate {
+  driverId: string;
+  driverName: string | null;
+  reason: string;
+  ring: number | null;
+  positionAgeSec: number | null;
+  detail?: string;
+}
+
+export interface MatchingResult {
+  orderId: string;
+  pickup: { latitude: number; longitude: number; h3Cell: string };
+  ringsSearched: number;
+  scoreVersion: string;
+  etaProvider: string | null;
+  computedAt: string;
+  candidates: RankedCandidate[];
+  excluded: ExcludedCandidate[];
+  alerts: string[];
+}
+
+export interface DispatchOffer {
+  id: string;
+  orderId: string;
+  driverId: string;
+  vehicleId: string;
+  rank: number;
+  etaSeconds: number | null;
+  mode: "AUTO" | "MANUAL";
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CANCELLED";
+  expiresAt: string | null;
+  respondedAt: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
 export interface GeoPointInput {
   latitude: number;
   longitude: number;
@@ -485,8 +545,32 @@ export const tmsService = {
     });
   },
 
-  assignOrder(values: { orderId: string; driverId: string; vehicleId: string }) {
-    return postData('/assignments', values);
+  /** Asignacion auditada: revalida contra el ranking H3 y exige motivo fuera del primero. */
+  assignOrder(values: {
+    orderId: string;
+    driverId: string;
+    vehicleId?: string;
+    reason?: string;
+  }) {
+    return postData(`/dispatch/orders/${values.orderId}/assign`, {
+      driverId: values.driverId,
+      ...(values.vehicleId && { vehicleId: values.vehicleId }),
+      ...(values.reason && { reason: values.reason }),
+    });
+  },
+
+  /** Conductores ordenados por ETA real a la recogida, con motivos de exclusion. */
+  dispatchCandidates(orderId: string) {
+    return getData<MatchingResult>(`/dispatch/orders/${orderId}/candidates`);
+  },
+
+  /** Respaldo sin ubicacion: disponibles con vehiculo activo de la categoria de la orden. */
+  dispatchAvailableDrivers(orderId: string) {
+    return getList("/dispatch/available-drivers", { orderId });
+  },
+
+  dispatchOffers(orderId: string) {
+    return getData<DispatchOffer[]>(`/dispatch/orders/${orderId}/offers`);
   },
 
   verifyPayment(paymentId: string) {
