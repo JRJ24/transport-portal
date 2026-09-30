@@ -1,10 +1,11 @@
+import { labelOptions } from "@/lib/labels";
 import type { ModuleConfig } from "@/types/domain";
 
 const commonOrderFields = [
-  { name: "estadoInterno", label: "Estado", type: "select" as const, options: ["DRAFT", "PENDING_QUOTE", "PENDING_CUSTOMER_CONFIRMATION", "PENDING_PAYMENT", "CONFIRMED", "ASSIGNING_DRIVER", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"] },
+  { name: "estadoInterno", label: "Estado", type: "select" as const, options: labelOptions("orderStatus") },
   { name: "customerId", label: "Cliente", type: "select" as const, options: [] },
   { name: "vehicleCategoryId", label: "Categoría de vehículo", type: "select" as const, options: [] },
-  { name: "serviceType", label: "Tipo de servicio", type: "select" as const, options: ["INMEDIATE", "SCHEDULED"] },
+  { name: "serviceType", label: "Tipo de servicio", type: "select" as const, options: labelOptions("serviceType") },
   { name: "scheduleAt", label: "Fecha programada", type: "date" as const, required: false },
   { name: "originContactName", label: "Contacto origen", placeholder: "Nombre" },
   { name: "originContactPhone", label: "Teléfono origen", placeholder: "+18095551234" },
@@ -45,13 +46,32 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     columns: [
       { key: "id", label: "Orden", type: "strong" }, { key: "cliente", label: "Cliente" }, { key: "origen", label: "Origen" },
       { key: "destino", label: "Destino" }, { key: "servicio", label: "Servicio" }, { key: "conductor", label: "Conductor" },
-      { key: "estado", label: "Estado", type: "status" }, { key: "estadoPago", label: "Pago", type: "status" }, { key: "metodoPago", label: "Método" }, { key: "eta", label: "ETA" }, { key: "precio", label: "Precio", type: "money" },
-      { key: "prioridad", label: "Prioridad", type: "status" },
+      { key: "estado", label: "Estado", type: "status" }, { key: "estadoPago", label: "Pago", type: "status" }, { key: "metodoPago", label: "Método" }, { key: "eta", label: "Duración" }, { key: "precio", label: "Precio", type: "money" },
     ],
     rows: [], fields: commonOrderFields,
     filters: [
-      { label: "Estado", name: "status", options: ["DRAFT", "PENDING_QUOTE", "PENDING_CUSTOMER_CONFIRMATION", "PENDING_PAYMENT", "REQUESTED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "CANCELLED", "FAILED"].map((value) => ({ label: value, value })) },
-      { label: "Servicio", name: "serviceType", options: ["INMEDIATE", "SCHEDULED"].map((value) => ({ label: value, value })) },
+      { label: "Estado", name: "status", options: labelOptions("orderStatus") },
+      { label: "Servicio", name: "serviceType", options: labelOptions("serviceType") },
+    ],
+    detailFields: [
+      { key: "id", label: "Código", section: "Resumen" },
+      { key: "estado", label: "Estado", type: "status", section: "Resumen" },
+      { key: "servicio", label: "Servicio", section: "Resumen" },
+      { key: "vehiculo", label: "Vehículo", section: "Resumen" },
+      { key: "fecha", label: "Creada", section: "Resumen" },
+      { key: "cliente", label: "Cliente", section: "Cliente" },
+      { key: "tipoCliente", label: "Tipo de cliente", section: "Cliente" },
+      { key: "origen", label: "Recogida", section: "Ruta" },
+      { key: "destino", label: "Entrega", section: "Ruta" },
+      { key: "distancia", label: "Distancia", section: "Ruta" },
+      { key: "eta", label: "Duración estimada", section: "Ruta" },
+      { key: "precio", label: "Total", type: "money", section: "Pago" },
+      { key: "estadoPago", label: "Estado del pago", type: "status", section: "Pago" },
+      { key: "metodoPago", label: "Método", section: "Pago" },
+      { key: "recibo", label: "Referencia", section: "Pago" },
+      { key: "autorizacion", label: "Autorización", section: "Pago" },
+      { key: "tarjeta", label: "Tarjeta", section: "Pago" },
+      { key: "conductor", label: "Conductor", section: "Conductor" },
     ],
   },
   drivers: {
@@ -66,13 +86,13 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     rows: [],
     filters: [
-      { label: "Estado", name: "availabilityStatus", options: ["AVAILABLE", "BUSY", "OFFLINE", "SUSPENDED", "VACATION"].map((value) => ({ label: value, value })) },
-      { label: "Verificación", name: "verificationStatus", options: ["PENDING", "APPROVED", "REJECTED"].map((value) => ({ label: value, value })) },
+      { label: "Estado", name: "availabilityStatus", options: labelOptions("driverStatus") },
+      { label: "Verificación", name: "verificationStatus", options: labelOptions("verificationStatus") },
     ],
     fields: [
       { name: "userId", label: "Usuario conductor", type: "select", options: [] }, { name: "licenseNumber", label: "Número de licencia" }, { name: "licenseExpiration", label: "Vencimiento", type: "date" },
-      { name: "availabilityStatus", label: "Estado", type: "select", options: ["AVAILABLE", "BUSY", "OFFLINE", "SUSPENDED", "VACATION"], required: false },
-      { name: "verificationStatus", label: "Verificación", type: "select", options: ["PENDING", "APPROVED", "REJECTED"], required: false },
+      { name: "availabilityStatus", label: "Estado", type: "select", options: labelOptions("driverStatus"), required: false },
+      { name: "verificationStatus", label: "Verificación", type: "select", options: labelOptions("verificationStatus"), required: false },
     ],
   },
   vehicles: {
@@ -87,19 +107,18 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     rows: [],
     filters: [
-      { label: "Estado", name: "status", options: ["ACTIVE", "MAINTENANCE", "INACTIVE", "SUSPENDED"].map((value) => ({ label: value, value })) },
+      { label: "Estado", name: "status", options: labelOptions("vehicleStatus") },
     ],
     fields: [
       { name: "driverId", label: "Conductor", type: "select", options: [] }, { name: "categoryId", label: "Categoría", type: "select", options: [] }, { name: "plateNumber", label: "Placa" },
       { name: "brand", label: "Marca" }, { name: "model", label: "Modelo" }, { name: "year", label: "Año", type: "number" },
-      { name: "color", label: "Color" }, { name: "status", label: "Estado", type: "select", options: ["ACTIVE", "MAINTENANCE", "INACTIVE", "SUSPENDED"], required: false },
+      { name: "color", label: "Color" }, { name: "status", label: "Estado", type: "select", options: labelOptions("vehicleStatus"), required: false },
     ],
   },
   customers: {
     key: "customers", title: "Clientes", subtitle: "Cartera, SLA y volumen por cuenta", action: "Nuevo cliente",
     stats: [
-      { label: "Cuentas", value: "312", helper: "+18 este trimestre", tone: "slate" }, { label: "SLA en riesgo", value: "18", helper: "Requieren seguimiento", tone: "red" },
-      { label: "Volumen mes", value: "8.4k", helper: "+12.4% vs. junio", tone: "blue" }, { label: "NPS", value: "72", helper: "Excelente", tone: "green" },
+
     ],
     columns: [
       { key: "cliente", label: "Cuenta", type: "strong" }, { key: "tipo", label: "Tipo" },
@@ -107,15 +126,15 @@ export const moduleConfigs: Partial<Record<string, ModuleConfig>> = {
     ],
     rows: [],
     filters: [
-      { label: "Tipo", name: "customerType", options: ["INDIVIDUAL", "BUSINESS"].map((value) => ({ label: value, value })) },
-      { label: "Estado", name: "status", options: ["ACTIVE", "INACTIVE", "BLOCKED"].map((value) => ({ label: value, value })) },
+      { label: "Tipo", name: "customerType", options: labelOptions("customerType") },
+      { label: "Estado", name: "status", options: labelOptions("accountStatus") },
     ],
     fields: [
       { name: "fullName", label: "Nombre completo" },
       { name: "email", label: "Correo", type: "email" },
       { name: "phone", label: "Teléfono" },
-      { name: "customerType", label: "Tipo", type: "select", options: ["INDIVIDUAL", "BUSINESS"] },
-      { name: "documentType", label: "Documento", type: "select", options: ["ID", "RNC", "PASSPORT"] },
+      { name: "customerType", label: "Tipo", type: "select", options: labelOptions("customerType") },
+      { name: "documentType", label: "Documento", type: "select", options: labelOptions("documentType") },
       { name: "documentNumber", label: "Número documento" },
       { name: "companyName", label: "Empresa", required: false },
       { name: "billingEmail", label: "Correo facturación", type: "email", required: false },

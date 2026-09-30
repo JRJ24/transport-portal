@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   Button,
   DataTable,
+  Drawer,
   EntityForm,
   Modal,
   PageHeader,
@@ -12,6 +13,7 @@ import {
   StatCard,
   StatusBadge,
 } from "@/components/ui";
+import { labelOptions } from "@/lib/labels";
 import { queryKeys } from "@/lib/query-keys";
 import {
   mapOrderRow,
@@ -24,9 +26,7 @@ const reservationFilters = [
   {
     label: "Estado",
     name: "status",
-    options: ["ACTIVE", "RESCHUDULED", "CANCELLED", "EXPIRED", "COMPLETED"].map(
-      (value) => ({ label: value, value }),
-    ),
+    options: labelOptions("reservationStatus"),
   },
 ];
 
@@ -43,6 +43,7 @@ export function ReservationsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<DataRow | null>(null);
+  const [viewing, setViewing] = useState<DataRow | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -79,10 +80,10 @@ export function ReservationsPage() {
     () => (reservationsQuery.data ?? []).map(mapReservationRow),
     [reservationsQuery.data],
   );
-  const active = rows.filter((row) => row.estado === "ACTIVE").length;
-  const pending = rows.filter((row) => row.estado === "RESCHUDULED").length;
-  const completed = rows.filter((row) => row.estado === "COMPLETED").length;
-  const cancelled = rows.filter((row) => row.estado === "CANCELLED").length;
+  const active = rows.filter((row) => row.estadoInterno === "ACTIVE").length;
+  const pending = rows.filter((row) => row.estadoInterno === "RESCHUDULED").length;
+  const completed = rows.filter((row) => row.estadoInterno === "COMPLETED").length;
+  const cancelled = rows.filter((row) => row.estadoInterno === "CANCELLED").length;
   const fields = [
     {
       name: "orderId",
@@ -213,9 +214,6 @@ export function ReservationsPage() {
           </Button>
           <strong>{formatRange(weekStart, addDays(weekEnd, -1))}</strong>
         </div>
-        <div className="segmented">
-          <button className="active">Semana</button>
-        </div>
       </div>
       <section className="calendar">
         <div className="calendar-head">
@@ -266,7 +264,7 @@ export function ReservationsPage() {
         <DataTable
           columns={columns}
           rows={rows}
-          onView={() => undefined}
+          onView={(row) => setViewing(row)}
           onEdit={(row) => {
             setEditing({ ...row, reservedFor: String(row.reservedFor).slice(0, 10) });
             setOpen(true);
@@ -274,6 +272,34 @@ export function ReservationsPage() {
           onDelete={(row) => void cancelReservation(String(row.id))}
         />
       </div>
+      <Drawer
+        entityId={viewing ? String(viewing.orderId) : undefined}
+        entityType="ORDER"
+        row={open ? null : viewing}
+        fields={[
+          { key: "orden", label: "Orden", section: "Reserva" },
+          { key: "cliente", label: "Cliente", section: "Reserva" },
+          { key: "reservado", label: "Fecha reservada", section: "Reserva" },
+          { key: "vehiculo", label: "Vehículo", section: "Reserva" },
+          { key: "reprogramaciones", label: "Reprogramaciones", section: "Reserva" },
+          { key: "estado", label: "Estado", type: "status", section: "Reserva" },
+        ]}
+        onClose={() => setViewing(null)}
+        extraActions={
+          viewing ? (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditing({ ...viewing, reservedFor: String(viewing.reservedFor).slice(0, 10) });
+                setViewing(null);
+                setOpen(true);
+              }}
+            >
+              Reprogramar
+            </Button>
+          ) : null
+        }
+      />
       <Modal
         open={open}
         onClose={() => setOpen(false)}

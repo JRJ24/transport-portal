@@ -4,19 +4,22 @@ import { MAP_INSTANCE_IDS, MAP_TONES, type LatLngLiteral } from "@/config/maps.c
 import { toLatLng, type MapStop } from "@/lib/maps";
 import { MapCanvas } from "@/components/map/MapCanvas";
 import { MapMarker } from "@/components/map/MapMarker";
-import type { LiveLocation } from "@/services/tms.service";
+import type { LiveDriver, LiveLocation } from "@/services/tms.service";
 
 export function LiveMap({
   compact = false,
   followOrderId,
   locations = [],
   stops = [],
+  availableDrivers = [],
 }: {
   compact?: boolean;
   /** Orden a seguir con la camara; el resto se encuadra automaticamente. */
   followOrderId?: string;
   locations?: LiveLocation[];
   stops?: MapStop[];
+  /** Conductores disponibles con presencia H3 fresca (sin viaje). */
+  availableDrivers?: LiveDriver[];
 }) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -27,7 +30,10 @@ export function LiveMap({
   const followPoint = followOrderId
     ? (units.find((unit) => unit.location.orderId === followOrderId)?.position ?? null)
     : null;
-  const points = [...units.map((unit) => unit.position), ...stops.map((stop) => stop.position)];
+  const idle = availableDrivers
+    .map((driver) => ({ driver, position: toLatLng(driver) }))
+    .filter((item): item is { driver: LiveDriver; position: LatLngLiteral } => item.position !== null);
+  const points = [...units.map((unit) => unit.position), ...stops.map((stop) => stop.position), ...idle.map((item) => item.position)];
   const active = units.find((unit) => unit.location.id === selected);
 
   return (
@@ -51,6 +57,15 @@ export function LiveMap({
             zIndex={2}
           />
         ))}
+        {idle.map((item) => (
+          <MapMarker
+            key={`idle-${item.driver.driverId}`}
+            position={item.position}
+            title={`${item.driver.driverName ?? "Conductor"} · disponible`}
+            tone="available"
+            zIndex={1}
+          />
+        ))}
         {active && (
           <InfoWindow
             headerContent={<strong>{active.location.orderId}</strong>}
@@ -69,9 +84,9 @@ export function LiveMap({
           </InfoWindow>
         )}
       </MapCanvas>
-      {!compact && (units.length > 0 || stops.length > 0) && (
+      {!compact && (units.length > 0 || stops.length > 0 || idle.length > 0) && (
         <div className="map-legend">
-          {(["driver", "pickup", "dropoff"] as const).map((tone) => (
+          {(["driver", "available", "pickup", "dropoff"] as const).map((tone) => (
             <span key={tone}>
               <i style={{ background: MAP_TONES[tone].color }} /> {MAP_TONES[tone].label}
             </span>

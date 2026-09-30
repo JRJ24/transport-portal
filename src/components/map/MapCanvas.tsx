@@ -50,6 +50,9 @@ export interface MapCanvasProps {
  *
  * El padre debe tener altura propia y `position: relative`.
  */
+/** Mas alejado que esto el pais ya no se distingue: el mapa nunca muestra el mundo. */
+const MIN_ZOOM = 7;
+
 export function MapCanvas({
   children,
   compact = false,
@@ -87,6 +90,7 @@ export function MapCanvas({
             ? { latLngBounds: DOMINICAN_REPUBLIC_BOUNDS, strictBounds: false }
             : undefined
         }
+        minZoom={MIN_ZOOM}
         reuseMaps
       >
         <MapCamera followPoint={followPoint} points={points} />

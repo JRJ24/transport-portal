@@ -41,3 +41,18 @@
 .map-controls button:hover:not(:disabled) { border-color:#b9c9e4; color:var(--blue); }
 
 .trip-list>button[aria-pressed='true'] { background:#eef4ff; box-shadow:inset 3px 0 0 var(--blue); }
+
+/* ── Mapa en vivo: el mapa llena su columna, la lista tiene su propio scroll ─ */
+.map-layout { align-items:stretch; }
+.map-workspace { display:flex; min-height:560px; }
+.map-workspace>.live-map { flex:1; height:auto; min-height:560px; }
+.trip-sidebar { max-height:760px; overflow:hidden; }
+.trip-list { display:flex; min-height:0; flex:1; flex-direction:column; overflow:auto; }
+.trip-list>header { position:sticky; top:0; z-index:1; background:inherit; }
+.trip-kpis { grid-template-columns:repeat(2,1fr); }
+.trip-empty { padding:14px 12px; color:#8490a2; font-size:9px; }
+.route-alert { margin-top:0; }
+@media (max-width: 980px) {
+  .map-workspace, .map-workspace>.live-map { min-height:430px; }
+  .trip-sidebar { max-height:none; }
+}

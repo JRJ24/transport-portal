@@ -110,3 +110,25 @@
 .disclosure[open]>summary::after { transform:rotate(90deg); }
 .disclosure__body { border-top:1px solid #e6ebf2; padding:12px; }
 .form-hint { margin:0; color:#738096; font-size:10px; }
+
+/* ── Panel de detalle por secciones ─────────────────────────────────────── */
+.drawer-body { grid-template-columns:1fr; }
+.detail-section { display:grid; gap:8px; }
+.detail-section h3 { margin:6px 0 0; color:#5d6a7d; font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.detail-field span { text-transform:none; }
+.detail-field strong { overflow-wrap:anywhere; }
+.drawer>footer { flex-wrap:wrap; }
+.overlay { backdrop-filter:none; }
+@media (max-width: 560px) { .detail-grid { grid-template-columns:1fr; } }
+
+/* ── Formulario de cliente (igual al registro del portal de clientes) ────── */
+.customer-form { display:grid; gap:16px; }
+.customer-type-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.customer-type-grid button { display:grid; gap:4px; padding:14px; border:1px solid #dce3ec; border-radius:10px; background:white; text-align:left; }
+.customer-type-grid button strong { color:#1d293b; font-size:12px; }
+.customer-type-grid button span { color:#738096; font-size:10px; }
+.customer-type-grid button.is-active { border-color:var(--blue); background:#eff6ff; box-shadow:0 0 0 1px var(--blue) inset; }
+.password-row { display:flex; gap:8px; }
+.password-row input { flex:1; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.04em; }
+@media (max-width: 560px) { .customer-type-grid { grid-template-columns:1fr; } }

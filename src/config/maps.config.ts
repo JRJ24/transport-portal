@@ -79,7 +79,8 @@ export const ROUTE_STROKE = {
 
 /** Paleta de marcadores por tipo de punto. */
 export const MAP_TONES = {
-  driver: { color: "#2463eb", glyph: "", label: "Conductor" },
+  driver: { color: "#2463eb", glyph: "", label: "En viaje" },
+  available: { color: "#0891b2", glyph: "", label: "Disponible" },
   pickup: { color: "#0fa654", glyph: "A", label: "Recogida" },
   dropoff: { color: "#f39a0b", glyph: "B", label: "Entrega" },
   stop: { color: "#64748b", glyph: "•", label: "Parada" },

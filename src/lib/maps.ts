@@ -1,4 +1,4 @@
-import { DEFAULT_CENTER, type LatLngLiteral, type MapTone } from "@/config/maps.config";
+import { DOMINICAN_REPUBLIC_BOUNDS, DEFAULT_CENTER, type LatLngLiteral, type MapTone } from "@/config/maps.config";
 import type { DataRow } from "@/types/domain";
 
 /** Cualquier objeto de la API con coordenadas (paradas, ubicaciones GPS). */
@@ -15,15 +15,26 @@ export interface LatLngBoundsLiteral {
 }
 
 /** Descarta 0/0, NaN y coordenadas fuera de rango (la API devuelve 0 cuando falta el dato). */
+/**
+ * Punto dibujable: numerico y dentro de Republica Dominicana (con margen).
+ *
+ * Un solo punto malo (lat/lng invertidos, un 0 en una coordenada, un signo
+ * perdido) hacia que `fitBounds` abarcara medio planeta y el mapa se viera
+ * como el mundo repetido. RUTA RD solo opera en el pais: fuera, es un error.
+ */
 export function isUsableLatLng(lat: number, lng: number) {
   return (
     Number.isFinite(lat) &&
     Number.isFinite(lng) &&
-    Math.abs(lat) <= 90 &&
-    Math.abs(lng) <= 180 &&
-    !(lat === 0 && lng === 0)
+    lat >= DOMINICAN_REPUBLIC_BOUNDS.south - SERVICE_AREA_MARGIN &&
+    lat <= DOMINICAN_REPUBLIC_BOUNDS.north + SERVICE_AREA_MARGIN &&
+    lng >= DOMINICAN_REPUBLIC_BOUNDS.west - SERVICE_AREA_MARGIN &&
+    lng <= DOMINICAN_REPUBLIC_BOUNDS.east + SERVICE_AREA_MARGIN
   );
 }
+
+/** Grados de margen alrededor del pais (islas y costa). */
+const SERVICE_AREA_MARGIN = 0.4;
 
 /** Normaliza `{latitude, longitude}` (API) a `{lat, lng}` (Google Maps). */
 export function toLatLng(point?: GeoPoint | null): LatLngLiteral | null {

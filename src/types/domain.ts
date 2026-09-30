@@ -57,6 +57,14 @@ export interface FilterConfig {
   options: { label: string; value: string }[];
 }
 
+/** Campo del panel de detalle: que mostrar, con que nombre y en que seccion. */
+export interface DetailField {
+  key: string;
+  label: string;
+  type?: "status" | "money" | "text";
+  section?: string;
+}
+
 export interface ModuleConfig {
   key: ModuleKey;
   title: string;
@@ -67,4 +75,6 @@ export interface ModuleConfig {
   rows: DataRow[];
   fields: FormField[];
   filters: Array<string | FilterConfig>;
+  /** Campos del panel de detalle. Sin esto se muestran las columnas de la tabla. */
+  detailFields?: DetailField[];
 }
