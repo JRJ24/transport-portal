@@ -14,6 +14,7 @@ import {
   StatCard,
 } from "@/components/ui";
 import { OrderForm } from "@/features/orders/OrderForm";
+import { AssignOrderDialog } from "@/features/dispatch/AssignOrderDialog";
 import {
   isApiModule,
   tmsService,
@@ -32,9 +33,6 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
   const [selected, setSelected] = useState<DataRow | null>(null);
   const [deleting, setDeleting] = useState<DataRow | null>(null);
   const [assigning, setAssigning] = useState<DataRow | null>(null);
-  const [assignmentDriverId, setAssignmentDriverId] = useState("");
-  const [assignmentVehicleId, setAssignmentVehicleId] = useState("");
-  const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [driverVerificationSaving, setDriverVerificationSaving] = useState(false);
   const [checkRegistering, setCheckRegistering] = useState<DataRow | null>(null);
@@ -79,27 +77,6 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     queryKey: ["lookup", "drivers"],
     queryFn: () => tmsService.drivers(),
     enabled: needsVehicleLookups,
-  });
-  const assignmentDriverOptions = useQuery({
-    queryKey: ["lookup", "drivers", "assignment"],
-    queryFn: () => tmsService.drivers({ availabilityStatus: "AVAILABLE", verificationStatus: "APPROVED" }),
-    enabled: config.key === "orders" && Boolean(assigning),
-  });
-  const assignmentVehicleOptions = useQuery({
-    queryKey: [
-      "lookup",
-      "vehicles",
-      "assignment",
-      assignmentDriverId,
-      assigning?.vehicleCategoryId,
-    ],
-    queryFn: () =>
-      tmsService.vehicles({
-        driverId: assignmentDriverId,
-        status: "ACTIVE",
-        categoryId: String(assigning?.vehicleCategoryId ?? ""),
-      }),
-    enabled: config.key === "orders" && Boolean(assigning) && Boolean(assignmentDriverId),
   });
 
   const rows = useMemo(
@@ -149,12 +126,17 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       !["PAID", "AUTHORIZED", "FAILED", "CANCELLED", "EXPIRED"].includes(selectedPaymentRecordStatus || selectedPaymentStatus),
   );
   const canViewSelectedReceipt = Boolean(selectedPaymentId && !canVerifyCardnetSelected);
-  const canAssignSelected = Boolean(
-    selected &&
-      String(selected.conductor) === "Sin asignar" &&
-      String(selected.estadoInterno) === "REQUESTED" &&
-      ["PAID", "AUTHORIZED"].includes(selectedPaymentStatus),
-  );
+  // Por que no se puede asignar, dicho al operador en vez de un boton mudo.
+  const assignBlockedReason = !selected
+    ? ""
+    : String(selected.conductor) !== "Sin asignar"
+      ? "La orden ya tiene conductor"
+      : !["PAID", "AUTHORIZED"].includes(selectedPaymentStatus)
+        ? "Pendiente de pago: se asigna cuando el pago este confirmado o autorizado"
+        : !["REQUESTED", "ASSIGNING_DRIVER"].includes(String(selected.estadoInterno))
+          ? "La orden no esta esperando conductor"
+          : "";
+  const canAssignSelected = Boolean(selected && !assignBlockedReason);
   const canRegisterCheckSelected = Boolean(
     selected &&
       config.key === "orders" &&
@@ -264,41 +246,19 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
     toast.success("Exportación CSV completada");
   };
 
-  const submitAssignment = async () => {
-    if (!assigning) return;
-    if (!assignmentDriverId || !assignmentVehicleId) {
-      toast.error("Selecciona conductor y vehiculo");
-      return;
-    }
-
-    setAssignmentSaving(true);
-    try {
-      await tmsService.assignOrder({
-        orderId: String(assigning._id ?? assigning.id),
-        driverId: assignmentDriverId,
-        vehicleId: assignmentVehicleId,
-      });
-      toast.success("Orden asignada al conductor");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] }),
-        queryClient.invalidateQueries({ queryKey: ["lookup", "drivers"] }),
-        queryClient.invalidateQueries({ queryKey: ["lookup", "vehicles"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] }),
-      ]);
-      setAssigning(null);
-      setSelected(null);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo asignar la orden");
-    } finally {
-      setAssignmentSaving(false);
-    }
+  const openAssignment = (row: DataRow) => {
+    setAssigning(row);
   };
 
-  const openAssignment = (row: DataRow) => {
-    setAssignmentDriverId("");
-    setAssignmentVehicleId("");
-    setAssigning(row);
+  const onOrderAssigned = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["tms-module", "orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["lookup", "drivers"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] }),
+    ]);
+    setAssigning(null);
+    setSelected(null);
   };
 
   const openCheckRegistration = (row: DataRow) => {
@@ -653,6 +613,7 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
                 type="button"
                 onClick={() => openAssignment(selected)}
                 disabled={!canAssignSelected}
+                title={assignBlockedReason || undefined}
               >
                 Asignar conductor
               </Button>
@@ -668,61 +629,12 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
           ) : undefined
         }
       />
-      <Modal
-        open={Boolean(assigning)}
+      <AssignOrderDialog
+        key={String(assigning?._id ?? "none")}
+        order={assigning}
         onClose={() => setAssigning(null)}
-        title={`Asignar ${assigning?.id ?? "orden"}`}
-        description="Selecciona un conductor disponible y uno de sus vehiculos activos."
-      >
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitAssignment();
-          }}
-        >
-          <div className="form-grid">
-            <label className="span-2">
-              <span>Conductor disponible</span>
-              <select
-                value={assignmentDriverId}
-                onChange={(event) => {
-                  setAssignmentDriverId(event.target.value);
-                  setAssignmentVehicleId("");
-                }}
-              >
-                <option value="">Seleccionar conductor</option>
-                {(assignmentDriverOptions.data ?? []).map((driver) => {
-                  const option = driverOption(driver);
-                  return <option key={option.value} value={option.value}>{option.label}</option>;
-                })}
-              </select>
-            </label>
-            <label className="span-2">
-              <span>Vehiculo activo</span>
-              <select
-                value={assignmentVehicleId}
-                onChange={(event) => setAssignmentVehicleId(event.target.value)}
-                disabled={!assignmentDriverId || assignmentVehicleOptions.isLoading}
-              >
-                <option value="">Seleccionar vehiculo</option>
-                {(assignmentVehicleOptions.data ?? []).map((vehicle) => {
-                  const option = vehicleOption(vehicle);
-                  return <option key={option.value} value={option.value}>{option.label}</option>;
-                })}
-              </select>
-            </label>
-          </div>
-          <div className="form-summary">
-            <span>La orden debe estar pagada o autorizada. Pasara a ASSIGNED y el conductor recibira la asignacion por Socket.IO.</span>
-          </div>
-          <footer className="modal-actions">
-            <Button type="button" variant="secondary" onClick={() => setAssigning(null)}>Cancelar</Button>
-            <Button type="submit" disabled={assignmentSaving || !assignmentDriverId || !assignmentVehicleId}>
-              {assignmentSaving ? "Asignando..." : "Asignar orden"}
-            </Button>
-          </footer>
-        </form>
-      </Modal>
+        onAssigned={() => void onOrderAssigned()}
+      />
       <Modal
         open={Boolean(checkRegistering)}
         onClose={() => setCheckRegistering(null)}
@@ -909,34 +821,7 @@ function userOption(user: AnyRecord) {
   };
 }
 
-function driverOption(driver: AnyRecord) {
-  const user = asRecord(driver.user);
-  return {
-    label: [
-      String(user?.fullName ?? "Conductor"),
-      String(driver.licenseNumber ?? "sin licencia"),
-      String(driver.availabilityStatus ?? ""),
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    value: String(driver.id ?? ""),
-  };
-}
 
-function vehicleOption(vehicle: AnyRecord) {
-  const category = asRecord(vehicle.vehicleCategory);
-  return {
-    label: [
-      String(vehicle.plateNumber ?? "Vehiculo"),
-      `${String(vehicle.brand ?? "")} ${String(vehicle.model ?? "")}`.trim(),
-      String(category?.name ?? ""),
-      String(vehicle.status ?? ""),
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    value: String(vehicle.id ?? ""),
-  };
-}
 
 function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
   if (key === "orders") {
@@ -1094,4 +979,18 @@ function entityTypeFor(key: ModuleConfig["key"]) {
     default:
       return key.toUpperCase();
   }
+}
+
+function driverOption(driver: AnyRecord) {
+  const user = asRecord(driver.user);
+  return {
+    label: [
+      String(user?.fullName ?? "Conductor"),
+      String(driver.licenseNumber ?? "sin licencia"),
+      String(driver.availabilityStatus ?? ""),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    value: String(driver.id ?? ""),
+  };
 }
