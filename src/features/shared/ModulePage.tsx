@@ -14,6 +14,7 @@ import {
   StatCard,
 } from "@/components/ui";
 import { OrderForm } from "@/features/orders/OrderForm";
+import { CustomerForm } from "@/features/customers/CustomerForm";
 import { AssignOrderDialog } from "@/features/dispatch/AssignOrderDialog";
 import {
   isApiModule,
@@ -521,7 +522,17 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
         description="Completa la información operativa. Los campos marcados son obligatorios."
         wide
       >
-        {config.key === "orders" && modal !== "edit" ? (
+        {config.key === "customers" ? (
+          <CustomerForm
+            key={`${modal}-${selected?.id ?? "new"}`}
+            initial={modal === "edit" ? (selected ?? undefined) : undefined}
+            onSubmit={save}
+            onCancel={() => {
+              setModal(null);
+              setSelected(null);
+            }}
+          />
+        ) : config.key === "orders" && modal !== "edit" ? (
           <OrderForm
             onSubmit={save}
             onCancel={() => {
@@ -548,10 +559,13 @@ export function ModulePage({ config }: { config: ModuleConfig }) {
       <Drawer
         entityId={selected ? String(selected._id ?? selected.id) : undefined}
         entityType={entityTypeFor(config.key)}
-        row={modal ? null : selected}
+        // Con otro modal encima el panel se oculta (y vuelve al cerrarlo):
+        // nunca dos capas oscuras apiladas.
+        row={modal || assigning || checkRegistering || creditApproving || creditEditing ? null : selected}
+        fields={config.detailFields}
         onClose={() => setSelected(null)}
         extraActions={
-          config.key === "drivers" && selected && selected.verificacion === "PENDING" ? (
+          config.key === "drivers" && selected && selected.verificationStatus === "PENDING" ? (
             <>
               <Button
                 type="button"
@@ -827,9 +841,9 @@ function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
   if (key === "orders") {
     return [
       {
-        label: "Solicitadas",
-        value: String(count(rows, "REQUESTED", "estadoInterno")),
-        helper: "Pendientes de despacho",
+        label: "Sin conductor",
+        value: String(count(rows, "REQUESTED", "estadoInterno") + count(rows, "ASSIGNING_DRIVER", "estadoInterno")),
+        helper: "Pagadas, esperando despacho",
         tone: "blue",
       },
       {
@@ -852,23 +866,34 @@ function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
       },
     ];
   }
+  if (key === "customers") {
+    const business = rows.filter((row) => row.customerType === "BUSINESS").length;
+    const activeCredit = rows.filter((row) => row.creditStatus === "ACTIVE").length;
+    const pendingCredit = rows.filter((row) => row.creditStatus === "PENDING").length;
+    return [
+      { label: "Cuentas", value: String(rows.length), helper: `${rows.length - business} personales`, tone: "slate" },
+      { label: "Empresas", value: String(business), helper: "Facturación con RNC", tone: "blue" },
+      { label: "Crédito activo", value: String(activeCredit), helper: "Líneas aprobadas", tone: "green" },
+      { label: "Crédito por revisar", value: String(pendingCredit), helper: "Solicitudes pendientes", tone: "orange" },
+    ];
+  }
   if (key === "drivers") {
     return [
       {
         label: "Pendientes",
-        value: String(count(rows, "PENDING")),
+        value: String(count(rows, "PENDING", "verificationStatus")),
         helper: "Requieren aprobacion",
         tone: "orange",
       },
       {
         label: "Disponibles",
-        value: String(count(rows, "AVAILABLE")),
+        value: String(count(rows, "AVAILABLE", "availabilityStatus")),
         helper: "Listos para asignar",
         tone: "green",
       },
       {
         label: "Ocupados",
-        value: String(count(rows, "BUSY")),
+        value: String(count(rows, "BUSY", "availabilityStatus")),
         helper: "En servicio",
         tone: "blue",
       },
@@ -884,19 +909,19 @@ function buildApiStats(key: ModuleConfig["key"], rows: DataRow[]): Stat[] {
     return [
       {
         label: "Activas",
-        value: String(count(rows, "ACTIVE")),
+        value: String(count(rows, "ACTIVE", "status")),
         helper: "Disponibles en flota",
         tone: "green",
       },
       {
         label: "Mantenimiento",
-        value: String(count(rows, "MAINTENANCE")),
+        value: String(count(rows, "MAINTENANCE", "status")),
         helper: "No asignables",
         tone: "orange",
       },
       {
         label: "Inactivas",
-        value: String(count(rows, "INACTIVE") + count(rows, "SUSPENDED")),
+        value: String(count(rows, "INACTIVE", "status") + count(rows, "SUSPENDED", "status")),
         helper: "Fuera de operación",
         tone: "red",
       },

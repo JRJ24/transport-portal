@@ -3,6 +3,7 @@ import { unwrapApiResponse } from "@/lib/api-response";
 import type { ApiResponse } from "@/types/api.types";
 import type { DataRow, ModuleKey } from "@/types/domain";
 import { formatMoney } from "@/lib/money";
+import { label } from "@/lib/labels";
 
 export type AnyRecord = Record<string, unknown>;
 export type QueryParams = Record<
@@ -93,6 +94,36 @@ export interface DispatchOffer {
   createdAt: string;
 }
 
+/** Conductor disponible con posicion reciente (GET /dispatch/live-drivers). */
+export interface LiveDriver {
+  driverId: string;
+  driverName: string | null;
+  latitude: number;
+  longitude: number;
+  accuracyM: number | null;
+  h3Cell: string;
+  observedAt: string;
+}
+
+/** Ajuste editable en caliente (GET /settings/runtime). */
+export interface RuntimeSetting {
+  key: string;
+  group: "dispatch" | "pricing";
+  label: string;
+  description: string;
+  valueType: "STRING" | "NUMBER" | "BOOLEAN" | "JSON";
+  value: unknown;
+  source: "database" | "default";
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface SystemStatus {
+  overall: "ok" | "warning" | "error";
+  checkedAt: string;
+  checks: { id: string; label: string; state: "ok" | "warning" | "error"; detail: string }[];
+}
+
 export interface GeoPointInput {
   latitude: number;
   longitude: number;
@@ -146,6 +177,31 @@ export interface HealthStatus {
 }
 
 export type ReportFormat = "csv" | "xlsx" | "pdf";
+
+/** GET /reports/summary: metricas honestas del periodo. */
+export interface ReportSummary {
+  range: { from: string; to: string; days: number };
+  orders: {
+    total: number;
+    delivered: number;
+    cancelled: number;
+    failed: number;
+    inProgress: number;
+    byStatus: { status: string; count: number }[];
+    cancellationRate: number | null;
+  };
+  revenue: {
+    total: number;
+    payments: number;
+    averageTicket: number | null;
+    byMethod: { method: string; amount: number; count: number }[];
+    refunded: number;
+  };
+  onTime: { measured: number; onTime: number; rate: number | null };
+  daily: { date: string; orders: number; delivered: number; revenue: number }[];
+  topDrivers: { driverId: string; name: string; trips: number }[];
+  offers: { made: number; accepted: number; rejected: number; expired: number; acceptanceRate: number | null };
+}
 
 const apiModules = new Set<ModuleKey>([
   "orders",
@@ -368,6 +424,7 @@ export const tmsService = {
       documentNumber: values.documentNumber,
       companyName: optionalString(values.companyName),
       billingEmail: optionalString(values.billingEmail),
+      password: optionalString(values.password),
     });
   },
 
@@ -401,6 +458,34 @@ export const tmsService = {
     return patchData(`/users/${id}/status`, { status });
   },
 
+  updateUser(id: string, values: { fullName?: string; phone?: string }) {
+    return patchData(`/users/${id}`, values);
+  },
+
+  assignRole(userId: string, role: string) {
+    return postData("/roles/assign", { userId, role });
+  },
+
+  revokeRole(userId: string, role: string) {
+    return postData("/roles/revoke", { userId, role });
+  },
+
+  runtimeSettings() {
+    return getData<RuntimeSetting[]>("/settings/runtime");
+  },
+
+  updateRuntimeSetting(key: string, value: unknown) {
+    return putData(`/settings/runtime/${encodeURIComponent(key)}`, { value });
+  },
+
+  systemStatus() {
+    return getData<SystemStatus>("/settings/system-status");
+  },
+
+  sendTestNotification(userId: string, message: string) {
+    return postData("/notifications/test", { userId, message });
+  },
+
   reportsOperations(query?: QueryParams) {
     return getData<AnyRecord>("/reports/operations", query);
   },
@@ -409,8 +494,12 @@ export const tmsService = {
     return getData<AnyRecord>("/reports/billing", query);
   },
 
+  reportsSummary(query?: QueryParams) {
+    return getData<ReportSummary>("/reports/summary", query);
+  },
+
   async exportReport(
-    type: "operations" | "billing",
+    type: "operations" | "billing" | "summary",
     format: ReportFormat,
     query?: QueryParams,
   ) {
@@ -569,6 +658,10 @@ export const tmsService = {
     return getList("/dispatch/available-drivers", { orderId });
   },
 
+  liveDrivers() {
+    return getData<LiveDriver[]>("/dispatch/live-drivers");
+  },
+
   dispatchOffers(orderId: string) {
     return getData<DispatchOffer[]>(`/dispatch/orders/${orderId}/offers`);
   },
@@ -689,7 +782,40 @@ export const tmsService = {
       validFrom: toIso(values.validFrom),
       validTo: values.validTo ? toIso(values.validTo) : undefined,
       isActive: values.isActive ? values.isActive === "true" : undefined,
+      priority: values.priority ? toNumber(values.priority) : undefined,
     });
+  },
+
+  updateRateCard(id: string, values: Record<string, string>) {
+    return patchData(`/pricing/rate-cards/${id}`, {
+      name: optionalString(values.name),
+      description: optionalString(values.description),
+      validFrom: values.validFrom ? toIso(values.validFrom) : undefined,
+      validTo: values.validTo ? toIso(values.validTo) : undefined,
+      isActive: values.isActive ? values.isActive === "true" : undefined,
+      priority: values.priority !== undefined && values.priority !== "" ? toNumber(values.priority) : undefined,
+    });
+  },
+
+  deactivateRateCard(id: string) {
+    return deleteData(`/pricing/rate-cards/${id}`);
+  },
+
+  updateRateRule(rateCardId: string, ruleId: string, values: Record<string, string>) {
+    return patchData(`/pricing/rate-cards/${rateCardId}/rules/${ruleId}`, {
+      baseFare: toNumber(values.baseFare),
+      pricePerKm: toNumber(values.pricePerKm),
+      pricePerMinute: toNumber(values.pricePerMinute),
+      minimumFare: toNumber(values.minimumFare),
+      helperFee: toNumber(values.helperFee),
+      nightFee: toNumber(values.nightFee),
+      waitingPricePerMinute: toNumber(values.waitingPricePerMinute),
+      cancellationFee: toNumber(values.cancellationFee),
+    });
+  },
+
+  deleteRateRule(rateCardId: string, ruleId: string) {
+    return deleteData(`/pricing/rate-cards/${rateCardId}/rules/${ruleId}`);
   },
 
   createRateRule(rateCardId: string, values: Record<string, string>) {
@@ -718,6 +844,10 @@ export const tmsService = {
     });
   },
 
+  escalateIncident(id: string, reason?: string) {
+    return patchData(`/incidents/${id}/escalate`, reason ? { reason } : {});
+  },
+
   updateIncidentStatus(id: string, status: string) {
     return patchData(`/incidents/${id}/status`, { status });
   },
@@ -738,8 +868,8 @@ export const tmsService = {
     });
   },
 
-  validateDeliveryProof(id: string, validationStatus: string) {
-    return patchData(`/delivery-proofs/${id}/validate`, { validationStatus });
+  validateDeliveryProof(id: string, validationStatus: string, reason?: string) {
+    return patchData(`/delivery-proofs/${id}/validate`, { validationStatus, ...(reason && { reason }) });
   },
 
   upsertParameter(values: Record<string, string>) {
@@ -796,24 +926,25 @@ export function mapOrderRow(order: AnyRecord): DataRow {
       getString(pickup, "addressLine") ?? getString(pickup, "city") ?? "--",
     destino:
       getString(dropoff, "addressLine") ?? getString(dropoff, "city") ?? "--",
-    servicio: getString(order, "serviceType") ?? "--",
+    servicio: label("serviceType", getString(order, "serviceType")),
     vehiculo: getString(vehicleCategory, "name") ?? "Sin categoría",
     conductor: driverName,
     estado: orderStatusLabel(orderStatus),
     estadoInterno: orderStatus,
     estadoPago: paymentStatusLabel(paymentStatus, paymentMethod),
     estadoPagoInterno: paymentStatus,
-    eta: `${getNumber(order, "estimatedDurationMin") ?? "--"} min`,
+    eta: formatEtaMinutes(getNumber(order, "estimatedDurationMin")),
+    distancia: formatKm(getNumber(order, "distanceKm")),
+    tipoCliente: label("customerType", getString(customer, "customerType")),
     precio: getNumber(order, "totalAmount") ?? 0,
     recibo: getString(latestPayment, "providerReference") ?? "--",
     autorizacion: getString(latestPayment, "authorizationCode") ?? "--",
     tarjeta: getString(latestPayment, "maskedCardNumber") ?? "--",
-    metodoPago: paymentMethod || "--",
+    metodoPago: paymentMethod ? label("paymentMethod", paymentMethod) : "—",
     paymentProvider: getString(latestPayment, "paymentProvider") ?? "--",
     paymentRecordStatus,
     paymentId: getString(latestPayment, "id") ?? "",
     fecha: formatDateTime(getString(order, "createdAt")),
-    prioridad: orderStatus === "PENDING_QUOTE" || orderStatus === "REQUESTED" ? "Alta" : "Normal",
     // Coordenadas de las paradas: permiten dibujar la orden en el mapa aunque
     // el conductor todavia no este transmitiendo GPS. 0 = sin dato.
     origenLat: getNumber(pickup, "latitude") ?? 0,
@@ -890,9 +1021,9 @@ export function mapDriverRow(driver: AnyRecord): DataRow {
     nombre: getString(user, "fullName") ?? "Usuario no encontrado",
     licencia: getString(driver, "licenseNumber") ?? "--",
     vencimiento: formatDate(getString(driver, "licenseExpiration")),
-    verificacion: getString(driver, "verificationStatus") ?? "--",
+    verificacion: label("verificationStatus", getString(driver, "verificationStatus")),
     score: getNumber(driver, "ratingAVG") ?? 0,
-    estado: getString(driver, "availabilityStatus") ?? "--",
+    estado: label("driverStatus", getString(driver, "availabilityStatus")),
   };
 }
 
@@ -916,7 +1047,7 @@ export function mapVehicleRow(vehicle: AnyRecord): DataRow {
     anio: getNumber(vehicle, "year") ?? "--",
     conductor: getString(vehicle, "driverId") ? "Asignado" : "Sin conductor",
     documentos: String(asRecordArray(vehicle.vehiclesDocuments).length),
-    estado: getString(vehicle, "status") ?? "--",
+    estado: label("vehicleStatus", getString(vehicle, "status")),
   };
 }
 
@@ -950,54 +1081,39 @@ export function mapCustomerRow(customer: AnyRecord): DataRow {
       getString(user, "fullName") ??
       getString(customer, "documentNumber") ??
       "--",
-    tipo: getString(customer, "customerType") ?? "--",
+    tipo: label("customerType", getString(customer, "customerType")),
     documento: getString(customer, "documentNumber") ?? "--",
     volumen: String(orders.length || "--"),
-    cobro: creditStatus,
+    cobro: credit ? label("creditStatus", creditStatus) : "Sin crédito",
     creditoDisponible: creditLimit > 0 ? formatCurrency(creditAvailable) : "--",
-    estado: getString(user, "status") ?? "ACTIVE",
+    estado: label("accountStatus", getString(user, "status") ?? "ACTIVE"),
+    estadoInterno: getString(user, "status") ?? "ACTIVE",
   };
 }
 
 function orderStatusLabel(status: string) {
-  if (["DRAFT", "PENDING_QUOTE", "PENDING_CUSTOMER_CONFIRMATION"].includes(status)) {
-    return "Pendiente";
-  }
-  if (["PENDING_PAYMENT", "CONFIRMED"].includes(status)) {
-    return "Aceptada";
-  }
-  if (["REQUESTED", "ASSIGNING_DRIVER"].includes(status)) {
-    return "Pagada";
-  }
-  if (["ASSIGNED", "ACCEPTED"].includes(status)) {
-    return "Conductor asignado";
-  }
-  if (status === "IN_PROGRESS") {
-    return "En camino";
-  }
-  if (status === "DELIVERED") {
-    return "Entregado";
-  }
-  if (status === "CANCELLED") {
-    return "Cancelada";
-  }
-  if (status === "FAILED") {
-    return "Fallida";
-  }
-  return status;
+  return label("orderStatus", status);
 }
 
 function paymentStatusLabel(status: string, method: string) {
-  if (status === "PAID") {
-    return "PAGADO";
-  }
   if (status === "AUTHORIZED" && method === "CHECK") {
-    return "CHEQUE_RECIBIDO";
+    return "Cheque recibido";
   }
   if (status === "AUTHORIZED" && method === "CORPORATE_CREDIT") {
-    return "CREDITO_APROBADO";
+    return "Crédito aprobado";
   }
-  return status;
+  return label("paymentStatus", status);
+}
+
+/** ETA legible; nada por encima de un dia es un tiempo de viaje real. */
+function formatEtaMinutes(minutes: number | undefined) {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0 || minutes > 24 * 60) return "—";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  return `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`;
+}
+
+function formatKm(km: number | undefined) {
+  return km == null || !Number.isFinite(km) || km <= 0 ? "—" : `${km.toFixed(1)} km`;
 }
 
 export function mapReservationRow(reservation: AnyRecord): DataRow {
@@ -1021,7 +1137,8 @@ export function mapReservationRow(reservation: AnyRecord): DataRow {
     reservedFor: getString(reservation, "reservedFor") ?? "",
     vehiculo: getString(category, "name") ?? "--",
     reprogramaciones: getNumber(reservation, "rescheduleCount") ?? 0,
-    estado: getString(reservation, "reservationStatus") ?? "--",
+    estado: label("reservationStatus", getString(reservation, "reservationStatus")),
+    estadoInterno: getString(reservation, "reservationStatus") ?? "",
   };
 }
 
@@ -1034,9 +1151,11 @@ export function mapIncidentRow(incident: AnyRecord): DataRow {
     orden:
       getString(order, "orderCode") ?? getString(incident, "orderId") ?? "--",
     titulo: getString(incident, "title") ?? "--",
-    tipo: getString(incident, "incidentType") ?? "--",
-    severidad: getString(incident, "severity") ?? "--",
-    estado: getString(incident, "status") ?? "--",
+    tipo: label("incidentType", getString(incident, "incidentType")),
+    severidad: label("incidentSeverity", getString(incident, "severity")),
+    severidadInterna: getString(incident, "severity") ?? "",
+    estado: label("incidentStatus", getString(incident, "status")),
+    estadoInterno: getString(incident, "status") ?? "",
     fecha: formatDateTime(getString(incident, "reportedAt")),
   };
 }
@@ -1050,7 +1169,11 @@ export function mapRateCardRow(card: AnyRecord): DataRow {
     descripcion: getString(card, "description") ?? "--",
     vigencia: `${formatDate(getString(card, "validForm"))} - ${formatDate(getString(card, "validTo"))}`,
     reglas: String(rules.length),
-    estado: getBoolean(card, "isActive") ? "ACTIVE" : "INACTIVE",
+    estado: getBoolean(card, "isActive") ? "Activa" : "Inactiva",
+    estadoInterno: getBoolean(card, "isActive") ? "ACTIVE" : "INACTIVE",
+    prioridad: getNumber(card, "priority") ?? 0,
+    validFrom: getString(card, "validForm") ?? "",
+    validTo: getString(card, "validTo") ?? "",
   };
 }
 
@@ -1075,7 +1198,10 @@ export function mapRateRuleRow(
     minuto: getNumber(rule, "pricePerMinute") ?? 0,
     minima: getNumber(rule, "minimumFare") ?? 0,
     ayudante: getNumber(rule, "helperFee") ?? 0,
+    nocturno: getNumber(rule, "nightFee") ?? 0,
     espera: getNumber(rule, "waitingPricePerMinute") ?? 0,
+    cancelacion: getNumber(rule, "cancellationFee") ?? 0,
+    vehicleCategoryId: vehicleCategoryId ?? "",
   };
 }
 

@@ -3,11 +3,11 @@ import { createPortal } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Download, MoreHorizontal, Search, X } from "lucide-react";
+import { Check, Download, MoreHorizontal, Search, X } from "lucide-react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
 import { tmsService } from "@/services/tms.service";
-import type { Column, DataRow, FilterConfig, FormField, Stat, Tone } from "@/types/domain";
+import type { Column, DataRow, DetailField, FilterConfig, FormField, Stat, Tone } from "@/types/domain";
 import { formatMoney } from "@/lib/money";
 
 export function Button({ children, variant = "primary", className = "", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
@@ -16,9 +16,9 @@ export function Button({ children, variant = "primary", className = "", ...props
 
 export function StatusBadge({ children }: { children: ReactNode }) {
   const text = String(children);
-  const good = /activa|disponible|entregada|confirmada|resuelta|aprobada|validado|vip|pagado/i.test(text);
-  const bad = /incidencia|atrasada|crítica|riesgo|rechaz|suspend|vencido/i.test(text);
-  const warn = /pendiente|recogida|pausa|mantenimiento|revisión|media|alta/i.test(text);
+  const good = /activ|disponible|entregad|confirmad|resuelt|aprobad|validad|pagad|autorizad|crédito aprobado|cheque recibido|completad/i.test(text);
+  const bad = /incidencia|atrasad|crítica|riesgo|rechaz|suspend|vencid|fallid|cancelad|bloquead/i.test(text);
+  const warn = /pendiente|recogida|pausa|mantenimiento|revisión|media|alta|sin conductor|ofreciendo|por aceptar|procesando|borrador/i.test(text);
   const tone: Tone = good ? "green" : bad ? "red" : warn ? "orange" : "blue";
   return <span className={`badge badge--${tone}`}>{text}</span>;
 }
@@ -51,14 +51,21 @@ export function SearchFilters({ search, onSearch, filters, values = {}, onFilter
     <div className="toolbar">
       <label className="search-field"><Search size={16} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Buscar en esta vista..." /></label>
       <div className="filter-row">
-        {filters.map((filter) => typeof filter === "string" ? <button key={filter} className="filter-chip" type="button">{filter}<ChevronDown size={13} /></button> : <label key={filter.name} className="filter-chip filter-chip--select"><span>{filter.label}</span><select value={values[filter.name] ?? ""} onChange={(event) => onFilterChange?.(filter.name, event.target.value)}><option value="">Todos</option>{filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
+        {filters.filter((filter): filter is FilterConfig => typeof filter !== "string").map((filter) => <label key={filter.name} className="filter-chip filter-chip--select"><span>{filter.label}</span><select value={values[filter.name] ?? ""} onChange={(event) => onFilterChange?.(filter.name, event.target.value)}><option value="">Todos</option>{filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
       </div>
     </div>
   );
 }
 
-export function DataTable({ columns, rows, onView, onEdit, onDelete }: { columns: Column[]; rows: DataRow[]; onView: (row: DataRow) => void; onEdit: (row: DataRow) => void; onDelete: (row: DataRow) => void }) {
+const PAGE_SIZE = 20;
+
+export function DataTable({ columns, rows: allRows, onView, onEdit, onDelete }: { columns: Column[]; rows: DataRow[]; onView: (row: DataRow) => void; onEdit: (row: DataRow) => void; onDelete: (row: DataRow) => void }) {
   const [menu, setMenu] = useState<string | null>(null);
+  const [requestedPage, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+  // Si un filtro reduce la lista, la pagina actual se ajusta sola.
+  const page = Math.min(requestedPage, pages);
+  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   return (
     <div className="table-shell">
       <div className="table-scroll">
@@ -80,7 +87,7 @@ export function DataTable({ columns, rows, onView, onEdit, onDelete }: { columns
         </table>
       </div>
       {!rows.length && <div className="empty-state"><Search size={24} /><strong>Sin resultados</strong><span>Prueba con otra búsqueda o limpia los filtros.</span></div>}
-      <footer className="table-footer"><span>Mostrando {rows.length} registros</span><div><button disabled>Anterior</button><button className="is-current">1</button><button>Siguiente</button></div></footer>
+      <footer className="table-footer"><span>{allRows.length ? `Mostrando ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + rows.length} de ${allRows.length}` : "Sin registros"}</span>{pages > 1 ? <div><button disabled={page <= 1} onClick={() => setPage(page - 1)}>Anterior</button><button className="is-current">{page} / {pages}</button><button disabled={page >= pages} onClick={() => setPage(page + 1)}>Siguiente</button></div> : null}</footer>
     </div>
   );
 }
@@ -134,10 +141,13 @@ function TableActionsMenu({ row, open, onOpenChange, onView, onEdit, onDelete }:
 
 export function Modal({ open, onClose, title, description, children, wide = false }: { open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
+    // Solo el modal abierto escucha Escape: con varios montados, uno cerrado
+    // no debe cerrar el panel de detalle ni otros modales.
+    if (!open) return undefined;
     const handler = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, open]);
   return <AnimatePresence>{open && <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}><motion.section className={`modal ${wide ? "modal--wide" : ""}`} initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10 }} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true"><header><div><h2>{title}</h2>{description && <p>{description}</p>}</div><button onClick={onClose} aria-label="Cerrar"><X size={20} /></button></header>{children}</motion.section></motion.div>}</AnimatePresence>;
 }
 
@@ -164,7 +174,7 @@ export function EntityForm({ fields, initial, submitLabel = "Guardar", onSubmit,
 
 type DrawerTab = "general" | "activity" | "documents" | "audit";
 
-export function Drawer({ entityId, entityType, extraActions, row, onClose }: { entityId?: string; entityType?: string; extraActions?: ReactNode; row: DataRow | null; onClose: () => void }) {
+export function Drawer({ entityId, entityType, extraActions, row, fields, onClose }: { entityId?: string; entityType?: string; extraActions?: ReactNode; row: DataRow | null; fields?: DetailField[]; onClose: () => void }) {
   const rowId = row?.id ?? "";
   const [tabState, setTabState] = useState<{ rowId: string; activeTab: DrawerTab }>({ rowId: "", activeTab: "general" });
   const activeTab = tabState.rowId === rowId ? tabState.activeTab : "general";
@@ -186,7 +196,7 @@ export function Drawer({ entityId, entityType, extraActions, row, onClose }: { e
     enabled: enabled && activeTab === "audit",
   });
 
-  return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{displayName(row)}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className={activeTab === "general" ? "active" : ""} onClick={() => setActiveTab("general")}>General</button><button className={activeTab === "activity" ? "active" : ""} onClick={() => setActiveTab("activity")}>Actividad</button><button className={activeTab === "documents" ? "active" : ""} onClick={() => setActiveTab("documents")}>Documentos</button><button className={activeTab === "audit" ? "active" : ""} onClick={() => setActiveTab("audit")}>Auditoría</button></nav><div className="drawer-body">{activeTab === "general" ? <GeneralTab row={row} /> : activeTab === "activity" ? <RemoteTab empty="Sin actividad registrada" loading={activityQuery.isLoading} rows={recordArray(activityQuery.data)} /> : activeTab === "documents" ? <RemoteTab empty="Sin documentos adjuntos" loading={documentsQuery.isLoading} rows={recordArray(documentsQuery.data)} /> : <RemoteTab empty="Sin auditoría registrada" loading={auditQuery.isLoading} rows={recordArray(auditQuery.data)} />}</div><footer><Button variant="secondary" onClick={() => setActiveTab("activity")}>Ver historial</Button>{extraActions}<Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
+  return <AnimatePresence>{row && <><motion.div className="drawer-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} /><motion.aside className="drawer" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 280 }}><header><div><span className="eyebrow">Vista de detalle</span><h2>{displayName(row)}</h2></div><button onClick={onClose}><X size={20} /></button></header><nav className="drawer-tabs"><button className={activeTab === "general" ? "active" : ""} onClick={() => setActiveTab("general")}>General</button><button className={activeTab === "activity" ? "active" : ""} onClick={() => setActiveTab("activity")}>Actividad</button><button className={activeTab === "documents" ? "active" : ""} onClick={() => setActiveTab("documents")}>Documentos</button><button className={activeTab === "audit" ? "active" : ""} onClick={() => setActiveTab("audit")}>Auditoría</button></nav><div className="drawer-body">{activeTab === "general" ? <GeneralTab row={row} fields={fields} /> : activeTab === "activity" ? <RemoteTab empty="Sin actividad registrada" loading={activityQuery.isLoading} rows={recordArray(activityQuery.data)} /> : activeTab === "documents" ? <RemoteTab empty="Sin documentos adjuntos" loading={documentsQuery.isLoading} rows={recordArray(documentsQuery.data)} /> : <RemoteTab empty="Sin auditoría registrada" loading={auditQuery.isLoading} rows={recordArray(auditQuery.data)} />}</div><footer><Button variant="secondary" onClick={() => setActiveTab("activity")}>Ver historial</Button>{extraActions}<Button onClick={onClose}>Cerrar</Button></footer></motion.aside></>}</AnimatePresence>;
 }
 
 export function ConfirmDialog({ row, onCancel, onConfirm }: { row: DataRow | null; onCancel: () => void; onConfirm: () => void }) {
@@ -197,8 +207,28 @@ function normalizeOption(option: string | { label: string; value: string }) {
   return typeof option === "string" ? { label: option, value: option } : option;
 }
 
-function GeneralTab({ row }: { row: DataRow }) {
-  return <>{Object.entries(row).filter(([key]) => !isInternalField(key)).map(([key, value]) => <div className="detail-field" key={key}><span>{key.replace(/_/g, " ")}</span><strong>{String(value)}</strong></div>)}</>;
+function GeneralTab({ row, fields }: { row: DataRow; fields?: DetailField[] }) {
+  // Sin configuracion: todo lo que no sea tecnico, con el nombre legible.
+  const list: DetailField[] = fields ?? Object.keys(row).filter((key) => !isInternalField(key)).map((key) => ({ key, label: humanizeKey(key) }));
+  const sections = list.reduce<Map<string, DetailField[]>>((acc, field) => {
+    const name = field.section ?? "";
+    acc.set(name, [...(acc.get(name) ?? []), field]);
+    return acc;
+  }, new Map());
+
+  return <>{[...sections.entries()].map(([section, sectionFields]) => <section className="detail-section" key={section || "main"}>
+    {section ? <h3>{section}</h3> : null}
+    <div className="detail-grid">{sectionFields.map((field) => {
+      const value = row[field.key];
+      const empty = value === undefined || value === null || value === "" || value === "--";
+      return <div className="detail-field" key={field.key}><span>{field.label}</span><strong>{empty ? "—" : field.type === "money" ? formatMoney(value as number) : field.type === "status" ? <StatusBadge>{value}</StatusBadge> : String(value)}</strong></div>;
+    })}</div>
+  </section>)}</>;
+}
+
+function humanizeKey(key: string) {
+  const text = key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function RemoteTab({ empty, loading, rows }: { empty: string; loading: boolean; rows: Array<Record<string, unknown>> }) {
@@ -224,7 +254,7 @@ function summarizeRecord(row: Record<string, unknown>) {
 }
 
 function isInternalField(key: string) {
-  return key === "_id" || key === "entityId" || key === "estadoInterno" || /(^|_)\w*Id$/.test(key);
+  return key === "_id" || key === "entityId" || /Interno$/.test(key) || /(^|_)\w*Id$/.test(key) || /(Lat|Lng)$/.test(key) || /^payment(Provider|RecordStatus)$/.test(key);
 }
 
 function displayName(row: DataRow) {
